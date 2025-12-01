@@ -1,0 +1,126 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.3.5' 
+    id 'io.spring.dependency-management' version '1.1.6'
+    id 'jacoco'
+}
+
+group = 'com.mindrevol'
+version = '0.0.1-SNAPSHOT'
+description = 'Mindrevol backend service'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+configurations {
+    compileOnly {
+        extendsFrom annotationProcessor
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    mapstructVersion = "1.5.5.Final"
+    lombokMapstructBindingVersion = "0.2.0"
+    jwtVersion = "0.11.5"
+    cloudinaryVersion = "1.38.0"
+}
+
+test {
+    useJUnitPlatform()
+    finalizedBy jacocoTestReport 
+}
+
+jacocoTestReport {
+    dependsOn test
+    reports {
+        xml.required = true 
+        html.required = true 
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+    
+    implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+    
+    implementation 'org.springframework.boot:spring-boot-starter-security'
+    
+    implementation 'org.springframework.boot:spring-boot-starter-mail'
+    
+    implementation 'org.springframework.boot:spring-boot-starter-websocket'
+    
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+    
+    implementation 'org.springframework.boot:spring-boot-starter-data-redis' 
+
+    runtimeOnly 'org.postgresql:postgresql'
+
+    compileOnly 'org.projectlombok:lombok'
+    
+    annotationProcessor 'org.projectlombok:lombok'
+    
+    implementation "org.mapstruct:mapstruct:${mapstructVersion}"
+    
+    annotationProcessor "org.projectlombok:lombok-mapstruct-binding:${lombokMapstructBindingVersion}"
+
+    annotationProcessor "org.mapstruct:mapstruct-processor:${mapstructVersion}"
+
+    implementation "io.jsonwebtoken:jjwt-api:${jwtVersion}"
+    
+    runtimeOnly "io.jsonwebtoken:jjwt-impl:${jwtVersion}"
+    
+    runtimeOnly "io.jsonwebtoken:jjwt-jackson:${jwtVersion}"
+
+    implementation 'com.google.api-client:google-api-client:2.2.0'
+    
+    implementation 'com.google.http-client:google-http-client-gson:1.43.3'
+
+    implementation "com.cloudinary:cloudinary-http44:${cloudinaryVersion}"
+    
+    implementation 'org.liquibase:liquibase-core'
+
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    
+    testImplementation 'org.springframework.security:spring-security-test'
+    
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+    
+    testRuntimeOnly 'com.h2database:h2'
+    
+    implementation 'org.springframework.retry:spring-retry'
+    
+    implementation 'org.springframework:spring-aspects'
+    
+    implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:2.6.0'
+    
+    implementation 'com.googlecode.owasp-java-html-sanitizer:owasp-java-html-sanitizer:20240325.1'
+    
+    implementation 'com.bucket4j:bucket4j-core:8.9.0'
+    
+    implementation 'com.bucket4j:bucket4j-redis:8.9.0'
+    
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    
+    implementation 'io.minio:minio:8.5.7'
+    
+    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+    
+    implementation 'org.redisson:redisson-spring-boot-starter:3.24.3'
+    
+    implementation 'net.coobird:thumbnailator:0.4.20' 
+
+    implementation 'com.google.firebase:firebase-admin:9.2.0'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}

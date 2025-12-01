@@ -1,0 +1,84 @@
+<?xml version="1.1" encoding="UTF-8" standalone="no"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.1.xsd">
+
+    <changeSet id="003-01-create-journeys-table" author="minh">
+        <createTable tableName="journeys">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT"/>
+            <column name="invite_code" type="VARCHAR(10)">
+                <constraints nullable="false" unique="true"/>
+            </column>
+            <column name="type" type="VARCHAR(20)">
+                <constraints nullable="false"/> 
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/> 
+            </column>
+            <column name="start_date" type="DATE"/>
+            <column name="end_date" type="DATE"/>
+            
+            <column name="theme" type="VARCHAR(50)" defaultValue="DEFAULT"/>
+            
+            <column name="created_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP"/>
+            
+            <column name="created_by" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_modified_by" type="BIGINT"/>
+        </createTable>
+
+        <createIndex tableName="journeys" indexName="idx_journey_invite_code">
+            <column name="invite_code"/>
+        </createIndex>
+    </changeSet>
+
+    <changeSet id="003-02-create-journey-participants-table" author="minh">
+        <createTable tableName="journey_participants">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="journey_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="user_id" type="BIGINT">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="role" type="VARCHAR(20)">
+                <constraints nullable="false"/> 
+            </column>
+            <column name="joined_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="current_streak" type="INT" defaultValueNumeric="0"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="journey_participants" baseColumnNames="journey_id"
+                                 referencedTableName="journeys" referencedColumnNames="id"
+                                 constraintName="fk_participant_journey"/>
+        
+        <addForeignKeyConstraint baseTableName="journey_participants" baseColumnNames="user_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_participant_user"/>
+
+        <addUniqueConstraint tableName="journey_participants" columnNames="journey_id, user_id"
+                             constraintName="uq_journey_participant"/>
+        
+        <createIndex tableName="journey_participants" indexName="idx_participant_user">
+            <column name="user_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

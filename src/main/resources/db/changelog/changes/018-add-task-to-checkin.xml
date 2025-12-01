@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="018-01-add-journey-task-id-to-checkins" author="minh">
+        <addColumn tableName="checkins">
+            <column name="journey_task_id" type="UUID">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <addForeignKeyConstraint baseTableName="checkins" baseColumnNames="journey_task_id"
+                                 referencedTableName="journey_tasks" referencedColumnNames="id"
+                                 constraintName="fk_checkin_task" onDelete="SET NULL"/>
+    </changeSet>
+
+</databaseChangeLog>

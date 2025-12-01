@@ -1,0 +1,8 @@
+global:
+  scrape_interval: 5s # Cào dữ liệu mỗi 5 giây
+
+scrape_configs:
+  - job_name: 'mindrevol-backend'
+    metrics_path: '/actuator/prometheus'
+    static_configs:
+      - targets: ['app:8080'] # 'app' là tên service backend trong docker-compose

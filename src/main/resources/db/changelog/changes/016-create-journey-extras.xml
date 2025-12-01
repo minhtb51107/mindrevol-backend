@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="016-01-create-journey-tasks" author="minh">
+        <createTable tableName="journey_tasks">
+            <column name="id" type="UUID">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="journey_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="day_no" type="INT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="title" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="journey_tasks" baseColumnNames="journey_id"
+                                 referencedTableName="journeys" referencedColumnNames="id"
+                                 constraintName="fk_journey_tasks_journey" onDelete="CASCADE"/>
+    </changeSet>
+
+    <changeSet id="016-02-create-journey-invitations" author="minh">
+        <createTable tableName="journey_invitations">
+            <column name="id" type="BIGINT" autoIncrement="true">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="journey_id" type="UUID">
+                <constraints nullable="false"/>
+            </column>
+            <column name="inviter_id" type="BIGINT"> <constraints nullable="false"/>
+            </column>
+            <column name="invitee_id" type="BIGINT"> <constraints nullable="false"/>
+            </column>
+            <column name="status" type="VARCHAR(20)">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="journey_invitations" baseColumnNames="journey_id"
+                                 referencedTableName="journeys" referencedColumnNames="id"
+                                 constraintName="fk_invitation_journey" onDelete="CASCADE"/>
+        
+        <addForeignKeyConstraint baseTableName="journey_invitations" baseColumnNames="inviter_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_invitation_inviter" onDelete="CASCADE"/>
+                                 
+        <addForeignKeyConstraint baseTableName="journey_invitations" baseColumnNames="invitee_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_invitation_invitee" onDelete="CASCADE"/>
+
+        <addUniqueConstraint tableName="journey_invitations" columnNames="journey_id, invitee_id, status"
+                             constraintName="uq_journey_invitation_status"/>
+    </changeSet>
+
+</databaseChangeLog>

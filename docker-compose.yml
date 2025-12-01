@@ -1,0 +1,108 @@
+version: '3.8'
+services:
+  app:
+    build: .
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://db:5432/mindrevol
+      - SPRING_DATA_REDIS_HOST=redis
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=mindrevol
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: mindrevol-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    networks:
+      - mindrevol-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mindrevol-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin # Mật khẩu mặc định
+    depends_on:
+      - prometheus
+    networks:
+      - mindrevol-network
+
+  minio:
+    image: minio/minio:latest
+    container_name: mindrevol-minio
+    ports:
+      - "9000:9000"   # Cổng API (Backend gọi vào đây)
+      - "9001:9001"   # Cổng Web Console (Bạn vào đây để quản lý file bằng giao diện)
+    environment:
+      MINIO_ROOT_USER: "mindrevol_admin"
+      MINIO_ROOT_PASSWORD: "mindrevol_password"
+    volumes:
+      - minio_data:/data   # Mount volume để restart không mất file
+    command: server /data --console-address ":9001"
+    networks:
+      - mindrevol-network
+
+      # 1. KHO CHỨA LOG
+  loki:
+    image: grafana/loki:2.9.2
+    container_name: mindrevol-loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    volumes:
+      - ./observability/loki-config.yaml:/etc/loki/local-config.yaml
+    networks:
+      - mindrevol-network
+
+  # 2. SHIPPER GOM LOG
+  promtail:
+    image: grafana/promtail:2.9.2
+    container_name: mindrevol-promtail
+    volumes:
+      - ./observability/promtail-config.yaml:/etc/promtail/config.yaml
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro # Đọc log của docker
+      - /var/run/docker.sock:/var/run/docker.sock # Để phát hiện container mới
+    command: -config.file=/etc/promtail/config.yaml
+    networks:
+      - mindrevol-network
+
+  # 3. MÀN HÌNH HIỂN THỊ (Nếu bạn chưa có)
+  grafana:
+    image: grafana/grafana:latest
+    container_name: mindrevol-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=mindrevol_admin
+    networks:
+      - mindrevol-network
+
+networks:
+  mindrevol-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  minio_data:
