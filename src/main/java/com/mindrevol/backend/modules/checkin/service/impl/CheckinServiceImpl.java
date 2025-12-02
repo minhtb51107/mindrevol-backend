@@ -21,7 +21,7 @@ import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyTaskRepository;
 import com.mindrevol.backend.modules.storage.service.FileStorageService;
 import com.mindrevol.backend.modules.user.entity.User;
-import com.mindrevol.backend.modules.user.repository.UserRepository; // <--- MỚI: Cần cái này để trừ vé
+import com.mindrevol.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -43,7 +43,7 @@ public class CheckinServiceImpl implements CheckinService {
     private final JourneyRepository journeyRepository;
     private final JourneyParticipantRepository participantRepository;
     private final JourneyTaskRepository journeyTaskRepository;
-    private final UserRepository userRepository; // <--- Inject UserRepository
+    private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
     private final CheckinMapper checkinMapper;
     private final ApplicationEventPublisher eventPublisher;
@@ -51,7 +51,6 @@ public class CheckinServiceImpl implements CheckinService {
 
     @Override
     public CheckinResponse createCheckin(CheckinRequest request, User currentUser) {
-        // 1. Validate sơ bộ
         Journey journey = journeyRepository.findById(request.getJourneyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
 
@@ -59,75 +58,69 @@ public class CheckinServiceImpl implements CheckinService {
             throw new BadRequestException("Bạn không phải thành viên");
         }
 
-        // 2. Upload Ảnh
-        String imageUrl = fileStorageService.uploadFile(request.getFile());
-        String thumbnailUrl = fileStorageService.uploadThumbnail(request.getFile());
+        // Upload Ảnh (Chỉ upload ảnh gốc, bỏ qua thumbnail để tối ưu tốc độ)
+        String imageUrl = "";
+        
+        if (request.getFile() != null && !request.getFile().isEmpty()) {
+            imageUrl = fileStorageService.uploadFile(request.getFile());
+        }
 
-        // 3. Vào Transaction xử lý logic phức tạp
-        return saveCheckinTransaction(currentUser, journey, request, imageUrl, thumbnailUrl);
+        return saveCheckinTransaction(currentUser, journey, request, imageUrl);
     }
 
     @Transactional
-    protected CheckinResponse saveCheckinTransaction(User currentUser, Journey journey, CheckinRequest request, String imageUrl, String thumbnailUrl) {
+    protected CheckinResponse saveCheckinTransaction(User currentUser, Journey journey, CheckinRequest request, String imageUrl) {
         
-        // --- 1. LOGIC KIỂM TRA NHIỆM VỤ (TASK) - ROADMAP ---
         JourneyTask task = null;
 
+        // Logic Task cho Roadmap
         if (journey.getType() == JourneyType.ROADMAP) {
-            // Nếu là hành trình có lộ trình -> Bắt buộc hoặc Khuyến khích chọn Task
             if (request.getTaskId() != null) {
-                // Lấy thông tin task
                 task = journeyTaskRepository.findById(request.getTaskId())
                         .orElseThrow(() -> new ResourceNotFoundException("Nhiệm vụ không tồn tại"));
 
-                // Task phải thuộc Journey này
                 if (!task.getJourney().getId().equals(journey.getId())) {
                     throw new BadRequestException("Nhiệm vụ này không thuộc hành trình hiện tại");
                 }
 
-                // CHECK QUAN TRỌNG: Đã làm task này chưa?
-                boolean alreadyDone = checkinRepository.existsByUserIdAndTaskId(currentUser.getId(), task.getId());
-                if (alreadyDone) {
-                    throw new BadRequestException("Bạn đã hoàn thành nhiệm vụ '" + task.getTitle() + "' rồi!");
+                if (checkinRepository.existsByUserIdAndTaskId(currentUser.getId(), task.getId())) {
+                    throw new BadRequestException("Bạn đã hoàn thành nhiệm vụ này rồi!");
                 }
-            }
-        } else {
-            // Nếu là HABIT -> Không được gửi taskId lên
-            if (request.getTaskId() != null) {
-                throw new BadRequestException("Hành trình thói quen không hỗ trợ chọn nhiệm vụ.");
             }
         }
 
-        // --- 2. XÁC ĐỊNH TRẠNG THÁI (REST vs NORMAL/FAILED/COMEBACK) ---
         CheckinStatus finalStatus;
 
         if (request.getStatusRequest() == CheckinStatus.REST) {
-            // === NGƯỜI DÙNG XIN NGHỈ (SỬ DỤNG ITEM) ===
+            // === NGƯỜI DÙNG XIN NGHỈ ===
             
-            // a. Kiểm tra trong kho có vé không?
-            if (currentUser.getFreezeStreakCount() <= 0) {
-                throw new BadRequestException("Bạn đã hết vé Nghỉ Phép (Freeze Streak)! Hãy tích điểm để đổi thêm.");
+            // Logic dùng cấu hình từ DB
+            if (journey.isRequiresFreezeTicket()) {
+                // Nếu hành trình YÊU CẦU VÉ (Kỷ luật)
+                if (currentUser.getFreezeStreakCount() <= 0) {
+                    throw new BadRequestException("Bạn đã hết vé Nghỉ Phép! Hãy tích điểm để đổi thêm.");
+                }
+                currentUser.setFreezeStreakCount(currentUser.getFreezeStreakCount() - 1);
+                userRepository.save(currentUser);
+                log.info("Used Freeze Streak ticket for User {}", currentUser.getId());
+            } else {
+                // Nếu hành trình KHÔNG CẦN VÉ (Giải trí)
+                log.info("Free REST status for User {} (No ticket required)", currentUser.getId());
             }
 
-            // b. Trừ 1 vé và Lưu User
-            currentUser.setFreezeStreakCount(currentUser.getFreezeStreakCount() - 1);
-            userRepository.save(currentUser);
-
             finalStatus = CheckinStatus.REST;
-            log.info("User {} used a Freeze Streak item. Remaining: {}", currentUser.getId(), currentUser.getFreezeStreakCount());
 
         } else {
-            // Logic cũ (Failed/Comeback/Normal)
             finalStatus = determineStatus(request.getStatusRequest(), journey.getId(), currentUser.getId());
         }
 
-        // --- 3. LƯU CHECKIN ---
+        // --- LƯU CHECKIN ---
         Checkin checkin = Checkin.builder()
                 .user(currentUser)
                 .journey(journey)
-                .task(task) // Lưu task vào (nếu có)
+                .task(task)
                 .imageUrl(imageUrl)
-                .thumbnailUrl(thumbnailUrl)
+                .thumbnailUrl(imageUrl) // Tạm thời dùng ảnh gốc làm thumbnail, Worker sẽ update lại sau
                 .emotion(request.getEmotion())
                 .status(finalStatus)
                 .caption(request.getCaption())
@@ -135,35 +128,24 @@ public class CheckinServiceImpl implements CheckinService {
 
         checkin = checkinRepository.save(checkin);
         
-     // Logic: Chỉ cộng điểm khi trạng thái là NORMAL hoặc COMEBACK (REST thì không được cộng)
+        // Chỉ cộng điểm khi NORMAL hoặc COMEBACK
         if (checkin.getStatus() == CheckinStatus.NORMAL || checkin.getStatus() == CheckinStatus.COMEBACK) {
-            long pointsEarned = 10L; // Mặc định 10 điểm
-            
-            // Nếu là Comeback thì thưởng ít hơn chút để phạt nhẹ
-            if (checkin.getStatus() == CheckinStatus.COMEBACK) {
-                pointsEarned = 5L; 
-            }
+            long pointsEarned = (checkin.getStatus() == CheckinStatus.COMEBACK) ? 5L : 10L;
 
-            // Cộng tiền vào ví User
             currentUser.setPoints(currentUser.getPoints() + pointsEarned);
             userRepository.save(currentUser);
 
-            // Ghi log lịch sử
             PointHistory history = PointHistory.builder()
                     .user(currentUser)
                     .amount(pointsEarned)
                     .balanceAfter(currentUser.getPoints())
-                    .reason("Thưởng check-in ngày " + LocalDate.now())
+                    .reason("Thưởng check-in")
                     .source(PointSource.CHECKIN)
                     .build();
             pointHistoryRepository.save(history);
-            
-            log.info("Awarded {} points to User {}", pointsEarned, currentUser.getId());
         }
 
-        // --- 4. BẮN SỰ KIỆN ---
-        // Sự kiện này sẽ được GamificationEventListener bắt để cộng điểm (nếu Normal) 
-        // hoặc giữ streak (nếu Rest)
+        // Bắn sự kiện (ImageProcessingListener sẽ bắt sự kiện này để xử lý thumbnail ngầm)
         eventPublisher.publishEvent(new CheckinSuccessEvent(
                 checkin.getId(),
                 currentUser.getId(),

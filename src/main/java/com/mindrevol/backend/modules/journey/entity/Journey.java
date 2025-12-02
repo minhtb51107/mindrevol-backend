@@ -57,6 +57,18 @@ public class Journey {
     @Builder.Default
     private String theme = "DEFAULT";
     
+    @Column(name = "setting_has_streak", nullable = false)
+    @Builder.Default
+    private boolean hasStreak = true; // Có tính chuỗi không?
+
+    @Column(name = "setting_req_freeze_ticket", nullable = false)
+    @Builder.Default
+    private boolean requiresFreezeTicket = true; // Nghỉ có mất vé không?
+
+    @Column(name = "setting_is_hardcore", nullable = false)
+    @Builder.Default
+    private boolean isHardcore = true; // Nhắc nhở gắt hay nhẹ nhàng?
+    
     @Column(name = "created_at", nullable = false, updatable = false)
     @CreatedDate
     private LocalDateTime createdAt;

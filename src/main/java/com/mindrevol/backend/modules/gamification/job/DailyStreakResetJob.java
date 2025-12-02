@@ -22,23 +22,24 @@ public class DailyStreakResetJob {
     private final JourneyParticipantRepository participantRepository;
     private final NotificationService notificationService;
 
-    // Chạy lúc 00:05 sáng mỗi ngày (Delay 5p để chắc chắn qua ngày mới)
+    // Chạy lúc 00:05 sáng mỗi ngày
     @Scheduled(cron = "0 5 0 * * ?") 
     @Transactional
     public void resetStreaks() {
         log.info("Starting Daily Streak Reset Job...");
 
         LocalDate yesterday = LocalDate.now().minusDays(1);
-
-        // Logic: Duyệt tất cả participant, ai mà lastCheckinDate < yesterday nghĩa là hôm qua KHÔNG check-in
-        // => Reset streak về 0
         List<JourneyParticipant> participants = participantRepository.findAll();
 
         for (JourneyParticipant p : participants) {
             
-            // Nếu chưa từng check-in hoặc check-in lần cuối trước ngày hôm qua
-            // Ví dụ: Hôm nay 21/10. Yesterday 20/10.
-            // Nếu lastCheckin = 19/10 => Missed 20/10 => Reset.
+            // --- LOGIC MỚI: DÙNG CẤU HÌNH ---
+            // Nếu hành trình KHÔNG tính chuỗi (ví dụ: Memories, Project) -> Bỏ qua ngay
+            if (!p.getJourney().isHasStreak()) {
+                continue;
+            }
+            // --------------------------------
+
             boolean missedYesterday = p.getLastCheckinAt() == null || p.getLastCheckinAt().isBefore(yesterday);
             
             if (missedYesterday && p.getCurrentStreak() > 0) {
@@ -48,7 +49,7 @@ public class DailyStreakResetJob {
                 p.setCurrentStreak(0);
                 participantRepository.save(p);
                 
-                // 2. Gửi thông báo AN ỦI cho chính chủ
+                // 2. Gửi thông báo AN ỦI
                 notificationService.sendAndSaveNotification(
                         p.getUser().getId(),
                         null,
@@ -59,8 +60,7 @@ public class DailyStreakResetJob {
                         null
                 );
 
-                // 3. (Optional) Gửi thông báo cho BẠN BÈ trong nhóm để vào AN ỦI
-                // Tìm các thành viên khác trong cùng Journey
+                // 3. Gửi thông báo cho bạn bè
                 notifyFriendsToComfort(p.getJourney().getId(), p.getUser(), oldStreak);
                 
                 log.info("Reset streak for user {} in journey {}", p.getUser().getId(), p.getJourney().getId());
@@ -71,7 +71,6 @@ public class DailyStreakResetJob {
     }
 
     private void notifyFriendsToComfort(java.util.UUID journeyId, User failedUser, int lostStreak) {
-        // Logic: Lấy danh sách thành viên khác trong journey (trừ người failed)
         List<JourneyParticipant> friends = participantRepository.findAllByJourneyId(journeyId);
         
         for (JourneyParticipant friend : friends) {
@@ -79,7 +78,7 @@ public class DailyStreakResetJob {
                 notificationService.sendAndSaveNotification(
                         friend.getUser().getId(),
                         failedUser.getId(),
-                        NotificationType.STREAK_LOST, // Client sẽ hiện icon "Failed" để an ủi
+                        NotificationType.STREAK_LOST, 
                         failedUser.getFullname() + " vừa mất chuỗi " + lostStreak + " ngày 😭",
                         "Hãy gửi lời động viên để bạn ấy quay trở lại nào!",
                         journeyId.toString(),

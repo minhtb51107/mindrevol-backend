@@ -4,18 +4,16 @@ import com.mindrevol.backend.config.MinioConfig;
 import com.mindrevol.backend.modules.storage.service.FileStorageService;
 
 import io.minio.BucketExistsArgs;
+import io.minio.GetObjectArgs;
 import io.minio.MakeBucketArgs;
 import io.minio.MinioClient;
 import io.minio.PutObjectArgs;
 import io.minio.RemoveObjectArgs;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import net.coobird.thumbnailator.Thumbnails;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
 import java.io.InputStream;
 import java.util.UUID;
 
@@ -29,51 +27,30 @@ public class MinioStorageServiceImpl implements FileStorageService {
 
     @Override
     public String uploadFile(MultipartFile file) {
-        return uploadToMinio(file, false);
+        try {
+            // Tạo tên file duy nhất: uuid_filename
+            String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+            return uploadToMinio(file.getInputStream(), fileName, file.getContentType(), file.getSize());
+        } catch (Exception e) {
+            throw new RuntimeException("Error getting stream from file", e);
+        }
     }
 
     @Override
-    public String uploadThumbnail(MultipartFile file) {
-        return uploadToMinio(file, true);
+    public String uploadStream(InputStream inputStream, String fileName, String contentType, long size) {
+        return uploadToMinio(inputStream, fileName, contentType, size);
     }
 
-    private String uploadToMinio(MultipartFile file, boolean isThumbnail) {
+    private String uploadToMinio(InputStream inputStream, String fileName, String contentType, long size) {
         try {
             String bucketName = minioConfig.getBucketName();
             
-            // 1. Đảm bảo bucket tồn tại
+            // 1. Đảm bảo bucket tồn tại (Có thể cache check này để tối ưu hơn nữa)
             if (!minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build())) {
                 minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
-                log.info("Bucket '{}' created successfully", bucketName);
             }
 
-            // 2. Tạo tên file duy nhất
-            // Format: uuid_thumb.jpg hoặc uuid_filename.png
-            String fileName = UUID.randomUUID() + (isThumbnail ? "_thumb.jpg" : "_" + file.getOriginalFilename());
-            
-            InputStream inputStream;
-            long size;
-            String contentType;
-
-            if (isThumbnail) {
-                // Logic NÉN ẢNH: Resize về 400x400, giảm chất lượng còn 80%, convert sang JPG
-                ByteArrayOutputStream os = new ByteArrayOutputStream();
-                Thumbnails.of(file.getInputStream())
-                        .size(400, 400)
-                        .outputQuality(0.8)
-                        .toOutputStream(os);
-                byte[] data = os.toByteArray();
-                inputStream = new ByteArrayInputStream(data);
-                size = data.length;
-                contentType = "image/jpeg"; 
-            } else {
-                // Ảnh gốc
-                inputStream = file.getInputStream();
-                size = file.getSize();
-                contentType = file.getContentType();
-            }
-
-            // 3. Upload lên MinIO
+            // 2. Upload lên MinIO
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucketName)
@@ -82,8 +59,7 @@ public class MinioStorageServiceImpl implements FileStorageService {
                             .contentType(contentType)
                             .build());
 
-            // 4. Trả về URL public
-            // Lưu ý: minioConfig.getUrl() cần có dạng "http://localhost:9000" (không có dấu / ở cuối)
+            // 3. Trả về URL public
             return String.format("%s/%s/%s", minioConfig.getUrl(), bucketName, fileName);
 
         } catch (Exception e) {
@@ -93,15 +69,27 @@ public class MinioStorageServiceImpl implements FileStorageService {
     }
 
     @Override
-    public void deleteFile(String fileUrl) {
-        if (fileUrl == null || fileUrl.isEmpty()) return;
-
+    public InputStream downloadFile(String fileUrl) {
         try {
             String bucketName = minioConfig.getBucketName();
-            
-            // Logic parse tên file từ URL
-            // URL dạng: http://localhost:9000/bucket-name/ten-file.jpg
-            // Ta cần lấy phần cuối cùng: "ten-file.jpg"
+            String objectName = fileUrl.substring(fileUrl.lastIndexOf("/") + 1);
+
+            return minioClient.getObject(
+                    GetObjectArgs.builder()
+                            .bucket(bucketName)
+                            .object(objectName)
+                            .build());
+        } catch (Exception e) {
+            log.error("Error downloading file from MinIO", e);
+            throw new RuntimeException("Could not download file");
+        }
+    }
+
+    @Override
+    public void deleteFile(String fileUrl) {
+        if (fileUrl == null || fileUrl.isEmpty()) return;
+        try {
+            String bucketName = minioConfig.getBucketName();
             String objectName = fileUrl.substring(fileUrl.lastIndexOf("/") + 1);
 
             minioClient.removeObject(
@@ -110,12 +98,8 @@ public class MinioStorageServiceImpl implements FileStorageService {
                             .object(objectName)
                             .build()
             );
-            
-            log.info("Deleted file from MinIO: {}", objectName);
-
         } catch (Exception e) {
-            // Chỉ log lỗi, không throw exception để tránh làm crash luồng chính (ví dụ khi xóa user)
-            log.error("Error deleting file from MinIO: URL={}", fileUrl, e);
+            log.error("Error deleting file", e);
         }
     }
 }

@@ -31,5 +31,7 @@
     <include file="changes/020-fix-missing-audit-columns.xml" relativeToChangelogFile="true"/>
     <include file="changes/021-create-point-history-schema.xml" relativeToChangelogFile="true"/>
     <include file="changes/022-add-gamification-fields-to-users.xml" relativeToChangelogFile="true"/>
+    
+    <include file="changes/023-add-journey-settings.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>
