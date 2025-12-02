@@ -3,11 +3,10 @@ package com.mindrevol.backend.modules.user.service.impl;
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.user.dto.response.FriendshipResponse;
-import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 import com.mindrevol.backend.modules.user.entity.Friendship;
 import com.mindrevol.backend.modules.user.entity.FriendshipStatus;
 import com.mindrevol.backend.modules.user.entity.User;
-import com.mindrevol.backend.modules.user.mapper.UserMapper;
+import com.mindrevol.backend.modules.user.mapper.FriendshipMapper; // Import Mapper mới
 import com.mindrevol.backend.modules.user.repository.FriendshipRepository;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
 import com.mindrevol.backend.modules.user.service.FriendshipService;
@@ -16,6 +15,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.mindrevol.backend.modules.notification.entity.NotificationType; // Import
+import com.mindrevol.backend.modules.notification.service.NotificationService;
 
 @Service
 @RequiredArgsConstructor
@@ -23,7 +24,8 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     private final FriendshipRepository friendshipRepository;
     private final UserRepository userRepository;
-    private final UserMapper userMapper;
+    private final FriendshipMapper friendshipMapper; 
+    private final NotificationService notificationService;
 
     @Override
     @Transactional
@@ -50,9 +52,17 @@ public class FriendshipServiceImpl implements FriendshipService {
 
         Friendship saved = friendshipRepository.save(friendship);
         
-        // TODO: Gửi Notification cho addressee tại đây ("requester.getFullname() muốn kết bạn")
+        notificationService.sendAndSaveNotification(
+                addressee.getId(),          // Người nhận: Người được mời
+                requester.getId(),          // Người gửi: Mình
+                NotificationType.FRIEND_REQUEST,
+                "Lời mời kết bạn mới 👋",
+                requester.getFullname() + " muốn kết bạn với bạn.",
+                saved.getId().toString(),   // Reference ID là Friendship ID
+                requester.getAvatarUrl()
+        );
 
-        return toFriendshipResponse(saved, requesterId);
+        return friendshipMapper.toResponse(saved, requesterId);
     }
 
     @Override
@@ -72,9 +82,20 @@ public class FriendshipServiceImpl implements FriendshipService {
         friendship.setStatus(FriendshipStatus.ACCEPTED);
         Friendship saved = friendshipRepository.save(friendship);
 
-        // TODO: Gửi Notification cho requester ("addressee đã chấp nhận lời mời")
+        User accepter = friendship.getAddressee(); // Là người đang thực hiện hành động này
+        User requester = friendship.getRequester();
 
-        return toFriendshipResponse(saved, userId);
+        notificationService.sendAndSaveNotification(
+                requester.getId(),
+                accepter.getId(),
+                NotificationType.FRIEND_ACCEPTED,
+                "Đã trở thành bạn bè 🤝",
+                accepter.getFullname() + " đã chấp nhận lời mời kết bạn.",
+                accepter.getId().toString(), // Bấm vào sẽ mở trang cá nhân người kia
+                accepter.getAvatarUrl()
+        );
+
+        return friendshipMapper.toResponse(saved, userId);
     }
 
     @Override
@@ -104,41 +125,18 @@ public class FriendshipServiceImpl implements FriendshipService {
     @Override
     public Page<FriendshipResponse> getMyFriends(Long userId, Pageable pageable) {
         return friendshipRepository.findAllAcceptedFriends(userId, pageable)
-                .map(friendship -> toFriendshipResponse(friendship, userId));
+                .map(friendship -> friendshipMapper.toResponse(friendship, userId));
     }
 
     @Override
     public Page<FriendshipResponse> getIncomingRequests(Long userId, Pageable pageable) {
         return friendshipRepository.findIncomingRequests(userId, pageable)
-                .map(friendship -> toFriendshipResponse(friendship, userId));
+                .map(friendship -> friendshipMapper.toResponse(friendship, userId));
     }
 
     @Override
     public Page<FriendshipResponse> getOutgoingRequests(Long userId, Pageable pageable) {
         return friendshipRepository.findOutgoingRequests(userId, pageable)
-                .map(friendship -> toFriendshipResponse(friendship, userId));
-    }
-
-    // Helper method để map sang DTO Response
-    private FriendshipResponse toFriendshipResponse(Friendship friendship, Long currentUserId) {
-        // Xác định ai là "bạn" trong mối quan hệ này để trả về thông tin người đó
-        User friendUser = friendship.getFriend(currentUserId);
-        
-        // Dùng UserMapper có sẵn để map User entity sang UserSummaryResponse
-        // Lưu ý: UserMapper phải có method toSummaryResponse, nếu chưa có thì dùng toProfileResponse tạm
-        UserSummaryResponse friendSummary = UserSummaryResponse.builder()
-                .id(friendUser.getId())
-                .fullname(friendUser.getFullname())
-                .handle(friendUser.getHandle())
-                .avatarUrl(friendUser.getAvatarUrl())
-                .build();
-
-        return FriendshipResponse.builder()
-                .id(friendship.getId())
-                .friend(friendSummary)
-                .status(friendship.getStatus())
-                .isRequester(friendship.getRequester().getId().equals(currentUserId))
-                .createdAt(friendship.getCreatedAt().toLocalDateTime())
-                .build();
+                .map(friendship -> friendshipMapper.toResponse(friendship, userId));
     }
 }

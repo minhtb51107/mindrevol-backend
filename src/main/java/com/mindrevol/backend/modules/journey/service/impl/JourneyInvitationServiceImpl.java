@@ -5,6 +5,7 @@ import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.habit.service.HabitService;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyInvitationResponse;
 import com.mindrevol.backend.modules.journey.entity.*;
+import com.mindrevol.backend.modules.journey.mapper.JourneyMapper;
 import com.mindrevol.backend.modules.journey.repository.JourneyInvitationRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
@@ -17,6 +18,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.mindrevol.backend.modules.notification.entity.NotificationType;
+import com.mindrevol.backend.modules.notification.service.NotificationService;
 
 import java.util.UUID;
 
@@ -30,6 +33,8 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
     private final JourneyParticipantRepository participantRepository;
     private final UserRepository userRepository;
     private final HabitService habitService; // Để tạo Habit khi join
+    private final NotificationService notificationService;
+    private final JourneyMapper journeyMapper;
 
     @Override
     @Transactional
@@ -68,7 +73,16 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
 
         invitationRepository.save(invitation);
         
-        // TODO: Bắn Notification cho friend ("inviter.getFullname() mời bạn tham gia journey.getName()")
+        notificationService.sendAndSaveNotification(
+                friend.getId(),
+                inviter.getId(),
+                NotificationType.JOURNEY_INVITE,
+                "Lời mời tham gia hành trình 🚀",
+                inviter.getFullname() + " mời bạn tham gia: " + journey.getName(),
+                journey.getId().toString(), // Reference ID là Journey ID
+                inviter.getAvatarUrl()
+        );
+        
         log.info("User {} invited User {} to Journey {}", inviter.getId(), friendId, journeyId);
     }
 
@@ -128,19 +142,7 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
 
     @Override
     public Page<JourneyInvitationResponse> getMyPendingInvitations(User currentUser, Pageable pageable) {
-        return invitationRepository.findPendingInvitationsForUser(currentUser.getId(), pageable)
-                .map(this::toResponse);
-    }
-
-    private JourneyInvitationResponse toResponse(JourneyInvitation invitation) {
-        return JourneyInvitationResponse.builder()
-                .id(invitation.getId())
-                .journeyId(invitation.getJourney().getId())
-                .journeyName(invitation.getJourney().getName())
-                .inviterName(invitation.getInviter().getFullname())
-                .inviterAvatar(invitation.getInviter().getAvatarUrl())
-                .status(invitation.getStatus())
-                .sentAt(invitation.getCreatedAt().toLocalDateTime())
-                .build();
+    	return invitationRepository.findPendingInvitationsForUser(currentUser.getId(), pageable)
+                .map(journeyMapper::toInvitationResponse);
     }
 }

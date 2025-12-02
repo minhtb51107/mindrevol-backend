@@ -16,7 +16,9 @@ import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
 import com.mindrevol.backend.modules.journey.service.JourneyService;
 import com.mindrevol.backend.modules.user.entity.User;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
+import org.springframework.cache.annotation.Cacheable; // Import Cache
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +31,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class JourneyServiceImpl implements JourneyService {
 
     private final JourneyRepository journeyRepository;
@@ -121,14 +124,11 @@ public class JourneyServiceImpl implements JourneyService {
         List<JourneyTask> tasks = journey.getRoadmap();
         Set<UUID> completedTaskIds = checkinRepository.findCompletedTaskIdsByUserAndJourney(currentUserId, journeyId);
 
-        return tasks.stream().map(task -> RoadmapStatusResponse.builder()
-                .taskId(task.getId())
-                .dayNo(task.getDayNo())
-                .title(task.getTitle())
-                .description(task.getDescription())
-                .isCompleted(completedTaskIds.contains(task.getId()))
-                .build())
-                .collect(Collectors.toList());
+        return tasks.stream().map(task -> {
+            RoadmapStatusResponse res = journeyMapper.toRoadmapResponse(task);
+            res.setCompleted(completedTaskIds.contains(task.getId()));
+            return res;
+        }).collect(Collectors.toList());
     }
 
     @Override
@@ -174,14 +174,57 @@ public class JourneyServiceImpl implements JourneyService {
     
     @Override
     @Transactional
+    public void leaveJourney(UUID journeyId, User currentUser) {
+        JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journeyId, currentUser.getId())
+                .orElseThrow(() -> new BadRequestException("Bạn không ở trong hành trình này"));
+
+        // Nếu là Creator thì không được rời (trừ khi chuyển quyền hoặc xóa nhóm - logic nâng cao sau này)
+        if (participant.getJourney().getCreator().getId().equals(currentUser.getId())) {
+            throw new BadRequestException("Bạn là người tạo nhóm, không thể tự rời. Hãy xóa nhóm nếu muốn kết thúc.");
+        }
+
+        participantRepository.delete(participant);
+    }
+
+    @Override
+    @Transactional
+    public JourneyResponse updateJourneySettings(UUID journeyId, UpdateJourneySettingsRequest request, User currentUser) {
+        Journey journey = journeyRepository.findById(journeyId)
+                .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
+
+        // Chỉ Admin của nhóm mới được sửa (Check trong bảng participant)
+        JourneyParticipant adminPart = participantRepository.findByJourneyIdAndUserId(journeyId, currentUser.getId())
+                .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
+        
+        if (adminPart.getRole() != JourneyRole.ADMIN) {
+            throw new BadRequestException("Chỉ Quản trị viên mới được thay đổi cài đặt");
+        }
+
+        // Cập nhật các trường nếu có gửi lên (Partial Update)
+        if (request.getName() != null) journey.setName(request.getName());
+        if (request.getDescription() != null) journey.setDescription(request.getDescription());
+        if (request.getTheme() != null) journey.setTheme(request.getTheme());
+        
+        if (request.getHasStreak() != null) journey.setHasStreak(request.getHasStreak());
+        if (request.getRequiresFreezeTicket() != null) journey.setRequiresFreezeTicket(request.getRequiresFreezeTicket());
+        if (request.getIsHardcore() != null) journey.setHardcore(request.getIsHardcore());
+
+        Journey updatedJourney = journeyRepository.save(journey);
+        return journeyMapper.toResponse(updatedJourney);
+    }
+
+    @Override
+    @Transactional
     public void kickMember(UUID journeyId, Long memberId, User currentUser) {
         JourneyParticipant requester = participantRepository.findByJourneyIdAndUserId(journeyId, currentUser.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không ở trong hành trình này"));
 
+        // 1. Phải là Admin mới được kick
         if (requester.getRole() != JourneyRole.ADMIN) {
-            throw new BadRequestException("Chỉ Admin mới có quyền mời thành viên ra khỏi nhóm");
+            throw new BadRequestException("Bạn không có quyền mời thành viên ra khỏi nhóm");
         }
 
+        // 2. Không thể tự kick mình
         if (currentUser.getId().equals(memberId)) {
             throw new BadRequestException("Bạn không thể tự kick chính mình. Hãy dùng chức năng Rời nhóm.");
         }
@@ -189,21 +232,25 @@ public class JourneyServiceImpl implements JourneyService {
         JourneyParticipant victim = participantRepository.findByJourneyIdAndUserId(journeyId, memberId)
                 .orElseThrow(() -> new ResourceNotFoundException("Thành viên không tồn tại trong nhóm"));
 
+        // 3. LOGIC MỚI: Check quyền cấp cao (Creator > Admin > Member)
+        boolean isRequesterCreator = requester.getJourney().getCreator().getId().equals(currentUser.getId());
+        boolean isVictimAdmin = victim.getRole() == JourneyRole.ADMIN;
+
+        // Nếu Victim là Admin, thì chỉ có Creator mới được kick
+        if (isVictimAdmin && !isRequesterCreator) {
+            throw new BadRequestException("Bạn không thể kick một Quản trị viên khác (Chỉ người tạo nhóm mới có quyền này)");
+        }
+
         participantRepository.delete(victim);
     }
 
-    private String generateUniqueInviteCode() {
-        String code;
-        do {
-            code = RandomStringUtils.randomAlphanumeric(6).toUpperCase();
-        } while (journeyRepository.existsByInviteCode(code));
-        return code;
-    }
-    
     @Override
     @Transactional(readOnly = true)
+    // Cache kết quả widget trong 10 phút. Key là kết hợp giữa journeyId và userId
+    @Cacheable(value = "journey_widget", key = "#journeyId + '-' + #userId") 
     public JourneyWidgetResponse getWidgetInfo(UUID journeyId, Long userId) {
-        
+        log.info("Fetching Widget Info from Database for User {} Journey {}", userId, journeyId); // Log để kiểm tra cache có hoạt động không
+
         JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journeyId, userId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bạn không tham gia hành trình này"));
 
@@ -235,7 +282,6 @@ public class JourneyServiceImpl implements JourneyService {
                     label = "Tuyệt vời! ✅";
                 }
             } else {
-                // Check logic Streak nếu hành trình có bật Streak
                 if (participant.getJourney().isHasStreak()) {
                     if (participant.getCurrentStreak() == 0 && participant.getJoinedAt().toLocalDate().isBefore(LocalDate.now())) {
                         widgetStatus = WidgetStatus.FAILED_STREAK;
@@ -245,7 +291,6 @@ public class JourneyServiceImpl implements JourneyService {
                         label = "Sẵn sàng chưa? 📸";
                     }
                 } else {
-                    // Nếu không tính streak (Memories) -> Luôn hiện trạng thái chờ bình thường
                     widgetStatus = WidgetStatus.PENDING;
                     label = "Chia sẻ khoảnh khắc nào! 📸";
                 }
@@ -265,5 +310,13 @@ public class JourneyServiceImpl implements JourneyService {
                 .ownerName(participant.getUser().getFullname())
                 .ownerAvatar(participant.getUser().getAvatarUrl())
                 .build();
+    }
+
+    private String generateUniqueInviteCode() {
+        String code;
+        do {
+            code = RandomStringUtils.randomAlphanumeric(6).toUpperCase();
+        } while (journeyRepository.existsByInviteCode(code));
+        return code;
     }
 }

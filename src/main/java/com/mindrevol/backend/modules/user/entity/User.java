@@ -34,7 +34,7 @@ public class User extends BaseEntity {
 
     @Enumerated(EnumType.STRING)
     @Column(length = 20, nullable = false)
-    @Builder.Default // <--- THÊM DÒNG NÀY ĐỂ FIX WARNING
+    @Builder.Default
     private UserStatus status = UserStatus.PENDING_ACTIVATION;
 
     @Column(nullable = false, length = 50, unique = true)
@@ -75,4 +75,9 @@ public class User extends BaseEntity {
     @Column(name = "freeze_streak_count", columnDefinition = "int default 0")
     @Builder.Default
     private Integer freezeStreakCount = 0;
+
+    // --- THÊM MỚI: OPTIMISTIC LOCKING ---
+    @Version
+    private Long version;
+    // ------------------------------------
 }

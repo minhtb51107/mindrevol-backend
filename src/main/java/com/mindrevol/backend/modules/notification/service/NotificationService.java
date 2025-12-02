@@ -11,9 +11,15 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.redis.core.RedisTemplate; // Import Redis
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
+
+import java.util.concurrent.TimeUnit; // Import TimeUnit
+import java.util.HashMap;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -22,22 +28,36 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
+    private final RedisTemplate<String, Object> redisTemplate; // Inject Redis Template
+    private final FirebaseService firebaseService;
+    private final SimpMessagingTemplate messagingTemplate;
 
     /**
      * Hàm quan trọng nhất: Tạo và Gửi thông báo
-     * @param recipientId: ID người nhận
-     * @param senderId: ID người gửi (có thể null nếu là System)
-     * @param type: Loại thông báo
-     * @param title: Tiêu đề
-     * @param message: Nội dung
-     * @param referenceId: ID liên kết (taskId, journeyId...)
-     * @param imageUrl: Link ảnh thumbnail (nếu có)
      */
-    @Async // Chạy bất đồng bộ để không làm chậm tác vụ chính
+    @Async 
     @Transactional
     public void sendAndSaveNotification(Long recipientId, Long senderId, NotificationType type,
                                         String title, String message, String referenceId, String imageUrl) {
         
+        // --- LOGIC MỚI: CHỐNG SPAM (THROTTLING) ---
+        // Chỉ áp dụng với Reaction và Comment (những thứ dễ bị spam số lượng lớn)
+        if (type == NotificationType.REACTION || type == NotificationType.COMMENT) {
+            // Tạo Key: noti_throttle:{userId}:{loại}:{id_bài_viết}
+            // Ví dụ: noti_throttle:10:REACTION:uuid-checkin-abc
+            String throttleKey = "noti_throttle:" + recipientId + ":" + type + ":" + referenceId;
+            
+            // Kiểm tra: Nếu key này đang tồn tại -> Nghĩa là vừa mới gửi thông báo cho bài này rồi
+            if (Boolean.TRUE.equals(redisTemplate.hasKey(throttleKey))) {
+                log.info("Spam protection: Skipped notification for user {} type {} ref {}", recipientId, type, referenceId);
+                return; // DỪNG LẠI NGAY, không lưu DB, không gửi Push
+            }
+            
+            // Nếu chưa có -> Đánh dấu là đã gửi, key này sẽ tự hết hạn sau 30 phút
+            redisTemplate.opsForValue().set(throttleKey, "1", 30, TimeUnit.MINUTES);
+        }
+        // ------------------------------------------
+
         User recipient = userRepository.findById(recipientId)
                 .orElseThrow(() -> new ResourceNotFoundException("Recipient not found"));
 
@@ -59,16 +79,32 @@ public class NotificationService {
                 .build();
         
         notificationRepository.save(notification);
-
-        // 2. Gửi FCM Push Notification (Mobile App)
-        // TODO: Tích hợp FirebaseMessaging.getInstance().send(...) tại đây
-        // Bạn có thể dùng recipient.getFcmToken() để lấy token thiết bị
+        
         if (recipient.getFcmToken() != null) {
-            log.info("Sending FCM to User {}: {} - {}", recipient.getId(), title, message);
-            // firebaseService.send(recipient.getFcmToken(), title, message, dataPayload);
-        } else {
-            log.warn("User {} has no FCM Token, cannot push.", recipient.getId());
+            Map<String, String> dataPayload = new HashMap<>();
+            dataPayload.put("type", type.name());
+            if (referenceId != null) dataPayload.put("referenceId", referenceId);
+            if (sender != null) dataPayload.put("senderId", sender.getId().toString());
+            if (imageUrl != null) dataPayload.put("imageUrl", imageUrl);
+
+            firebaseService.sendNotification(
+                recipient.getFcmToken(), 
+                title, 
+                message, 
+                dataPayload
+            );
         }
+
+     // --- 2. LOGIC MỚI: Gửi WebSocket (In-App Realtime) ---
+        // Client sẽ subscribe: /user/queue/notifications
+        // Map sang Response DTO cho gọn
+        NotificationResponse response = toResponse(notification);
+        
+        messagingTemplate.convertAndSendToUser(
+                recipient.getEmail(), 
+                "/queue/notifications", 
+                response
+        );
     }
 
     public Page<NotificationResponse> getMyNotifications(Long userId, Pageable pageable) {
@@ -82,7 +118,6 @@ public class NotificationService {
                 .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
         
         if (!notification.getRecipient().getId().equals(userId)) {
-            // Silent fail hoặc throw exception tùy ý
             return;
         }
         

@@ -10,6 +10,8 @@ import com.mindrevol.backend.modules.journey.recap.dto.*;
 import com.mindrevol.backend.modules.journey.recap.service.JourneyRecapService;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -72,18 +74,33 @@ public class JourneyRecapServiceImpl implements JourneyRecapService {
                 .date(firstCheckin.getCreatedAt().toLocalDate())
                 .build());
 
-        // === SCENE 3: MOST LIKED (Khoảnh khắc tỏa sáng) ===
-        // Giả sử Checkin entity chưa có field likeCount, ta có thể tạm bỏ qua hoặc dùng logic mock
-        // Ở đây tôi lấy check-in có caption dài nhất làm "tâm huyết nhất" (hoặc bạn có thể query count reaction)
-        // TODO: Nâng cấp query findCheckinWithMostReactions()
-        Checkin randomHighlight = allCheckins.get(allCheckins.size() / 2); // Lấy cái ở giữa làm điểm nhấn
-        slides.add(RecapSlide.builder()
-                .type(RecapSlideType.MOST_LIKED)
-                .title("Khoảnh khắc đáng nhớ")
-                .subtitle("Bạn đã làm rất tốt!")
-                .imageUrl(randomHighlight.getImageUrl())
-                .date(randomHighlight.getCreatedAt().toLocalDate())
-                .build());
+     // === SCENE 3: MOST LIKED (FIXED) ===
+        Checkin highlightCheckin = null;
+        
+        // Gọi query tìm bài nhiều like nhất, lấy top 1
+        List<Checkin> mostLikedList = checkinRepository.findMostLikedCheckins(
+                journeyId, 
+                user.getId(), 
+                PageRequest.of(0, 1)
+        );
+
+        if (!mostLikedList.isEmpty()) {
+            highlightCheckin = mostLikedList.get(0);
+        } else if (!allCheckins.isEmpty()) {
+            // Fallback: Nếu chưa ai like, lấy đại bài mới nhất làm highlight
+            highlightCheckin = allCheckins.get(allCheckins.size() - 1);
+        }
+
+        if (highlightCheckin != null) {
+            slides.add(RecapSlide.builder()
+                    .type(RecapSlideType.MOST_LIKED)
+                    .title("Khoảnh khắc tỏa sáng")
+                    .subtitle("Bức ảnh được yêu thích nhất!")
+                    .imageUrl(highlightCheckin.getImageUrl())
+                    .date(highlightCheckin.getCreatedAt().toLocalDate())
+                    // TODO: Có thể thêm field reactionCount vào RecapSlide để hiển thị số like
+                    .build());
+        }
 
         // === SCENE 4: COMEBACK (Nếu có) ===
         allCheckins.stream()

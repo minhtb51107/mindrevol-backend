@@ -5,14 +5,16 @@ import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
+import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
+import com.mindrevol.backend.modules.checkin.entity.CheckinComment;
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
+import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent; // Import Event mới
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
+import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
-import com.mindrevol.backend.modules.gamification.entity.PointHistory;
-import com.mindrevol.backend.modules.gamification.entity.PointSource;
-import com.mindrevol.backend.modules.gamification.repository.PointHistoryRepository;
+import com.mindrevol.backend.modules.journey.entity.InteractionType; // Import InteractionType
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.entity.JourneyTask;
 import com.mindrevol.backend.modules.journey.entity.JourneyType;
@@ -21,18 +23,22 @@ import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyTaskRepository;
 import com.mindrevol.backend.modules.storage.service.FileStorageService;
 import com.mindrevol.backend.modules.user.entity.User;
-import com.mindrevol.backend.modules.user.repository.UserRepository;
+import com.mindrevol.backend.modules.user.repository.UserRepository; // Import UserRepository
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -43,11 +49,14 @@ public class CheckinServiceImpl implements CheckinService {
     private final JourneyRepository journeyRepository;
     private final JourneyParticipantRepository participantRepository;
     private final JourneyTaskRepository journeyTaskRepository;
-    private final UserRepository userRepository;
+    private final UserRepository userRepository; // Cần thiết để save user status
     private final FileStorageService fileStorageService;
     private final CheckinMapper checkinMapper;
-    private final ApplicationEventPublisher eventPublisher;
-    private final PointHistoryRepository pointHistoryRepository;
+    
+    // --- CÁC DEPENDENCY MỚI ---
+    private final CheckinCommentRepository commentRepository;
+    private final ApplicationEventPublisher eventPublisher; // Dùng để bắn Event
+    // --------------------------
 
     @Override
     public CheckinResponse createCheckin(CheckinRequest request, User currentUser) {
@@ -58,9 +67,7 @@ public class CheckinServiceImpl implements CheckinService {
             throw new BadRequestException("Bạn không phải thành viên");
         }
 
-        // Upload Ảnh (Chỉ upload ảnh gốc, bỏ qua thumbnail để tối ưu tốc độ)
         String imageUrl = "";
-        
         if (request.getFile() != null && !request.getFile().isEmpty()) {
             imageUrl = fileStorageService.uploadFile(request.getFile());
         }
@@ -70,10 +77,8 @@ public class CheckinServiceImpl implements CheckinService {
 
     @Transactional
     protected CheckinResponse saveCheckinTransaction(User currentUser, Journey journey, CheckinRequest request, String imageUrl) {
-        
         JourneyTask task = null;
 
-        // Logic Task cho Roadmap
         if (journey.getType() == JourneyType.ROADMAP) {
             if (request.getTaskId() != null) {
                 task = journeyTaskRepository.findById(request.getTaskId())
@@ -92,11 +97,7 @@ public class CheckinServiceImpl implements CheckinService {
         CheckinStatus finalStatus;
 
         if (request.getStatusRequest() == CheckinStatus.REST) {
-            // === NGƯỜI DÙNG XIN NGHỈ ===
-            
-            // Logic dùng cấu hình từ DB
             if (journey.isRequiresFreezeTicket()) {
-                // Nếu hành trình YÊU CẦU VÉ (Kỷ luật)
                 if (currentUser.getFreezeStreakCount() <= 0) {
                     throw new BadRequestException("Bạn đã hết vé Nghỉ Phép! Hãy tích điểm để đổi thêm.");
                 }
@@ -104,23 +105,19 @@ public class CheckinServiceImpl implements CheckinService {
                 userRepository.save(currentUser);
                 log.info("Used Freeze Streak ticket for User {}", currentUser.getId());
             } else {
-                // Nếu hành trình KHÔNG CẦN VÉ (Giải trí)
                 log.info("Free REST status for User {} (No ticket required)", currentUser.getId());
             }
-
             finalStatus = CheckinStatus.REST;
-
         } else {
             finalStatus = determineStatus(request.getStatusRequest(), journey.getId(), currentUser.getId());
         }
 
-        // --- LƯU CHECKIN ---
         Checkin checkin = Checkin.builder()
                 .user(currentUser)
                 .journey(journey)
                 .task(task)
                 .imageUrl(imageUrl)
-                .thumbnailUrl(imageUrl) // Tạm thời dùng ảnh gốc làm thumbnail, Worker sẽ update lại sau
+                .thumbnailUrl(imageUrl)
                 .emotion(request.getEmotion())
                 .status(finalStatus)
                 .caption(request.getCaption())
@@ -128,24 +125,10 @@ public class CheckinServiceImpl implements CheckinService {
 
         checkin = checkinRepository.save(checkin);
         
-        // Chỉ cộng điểm khi NORMAL hoặc COMEBACK
-        if (checkin.getStatus() == CheckinStatus.NORMAL || checkin.getStatus() == CheckinStatus.COMEBACK) {
-            long pointsEarned = (checkin.getStatus() == CheckinStatus.COMEBACK) ? 5L : 10L;
-
-            currentUser.setPoints(currentUser.getPoints() + pointsEarned);
-            userRepository.save(currentUser);
-
-            PointHistory history = PointHistory.builder()
-                    .user(currentUser)
-                    .amount(pointsEarned)
-                    .balanceAfter(currentUser.getPoints())
-                    .reason("Thưởng check-in")
-                    .source(PointSource.CHECKIN)
-                    .build();
-            pointHistoryRepository.save(history);
-        }
-
-        // Bắn sự kiện (ImageProcessingListener sẽ bắt sự kiện này để xử lý thumbnail ngầm)
+        // --- CLEAN UP: Logic cộng điểm đã được xóa khỏi đây ---
+        // Nó sẽ được xử lý bởi GamificationEventListener khi nhận CheckinSuccessEvent
+        
+        // Bắn sự kiện Async để xử lý Gamification & Resize ảnh
         eventPublisher.publishEvent(new CheckinSuccessEvent(
                 checkin.getId(),
                 currentUser.getId(),
@@ -173,5 +156,78 @@ public class CheckinServiceImpl implements CheckinService {
             return CheckinStatus.COMEBACK;
         }
         return CheckinStatus.NORMAL;
+    }
+    
+    // --- TÍNH NĂNG COMMENT (ĐÃ CLEAN UP) ---
+
+    @Override
+    @Transactional
+    public CommentResponse postComment(UUID checkinId, String content, User currentUser) {
+        Checkin checkin = checkinRepository.findById(checkinId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
+
+        // Validate Interaction Type
+        Journey journey = checkin.getJourney();
+        if (journey.getInteractionType() == InteractionType.PRIVATE_REPLY) {
+            throw new BadRequestException("Hành trình này đang ở chế độ Riêng tư. Hãy dùng tính năng Nhắn tin (Reply) thay vì Bình luận.");
+        }
+        if (journey.getInteractionType() == InteractionType.RESTRICTED) {
+            throw new BadRequestException("Hành trình này đã tắt tính năng bình luận.");
+        }
+
+        CheckinComment comment = CheckinComment.builder()
+                .checkin(checkin)
+                .user(currentUser)
+                .content(content)
+                .build();
+        
+        comment = commentRepository.save(comment);
+
+        // --- CLEAN UP: Thay vì gọi notificationService trực tiếp, ta bắn Event ---
+        // NotificationEventListener sẽ lắng nghe và gửi thông báo
+        eventPublisher.publishEvent(new CommentPostedEvent(checkin, currentUser, content));
+        // -----------------------------------------------------------------------
+
+        return checkinMapper.toCommentResponse(comment);
+    }
+
+    @Override
+    public Page<CommentResponse> getComments(UUID checkinId, Pageable pageable) {
+        // Sử dụng Mapper thay vì build thủ công
+        return commentRepository.findByCheckinId(checkinId, pageable)
+                .map(checkinMapper::toCommentResponse);
+    }
+    
+    // --- TÍNH NĂNG FEED (ĐÃ CLEAN UP) ---
+
+    @Override
+    public List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit) {
+        if (cursor == null) {
+            cursor = LocalDateTime.now();
+        }
+        
+        Pageable pageable = PageRequest.of(0, limit);
+        
+        return checkinRepository.findUnifiedFeed(currentUser.getId(), cursor, pageable)
+                .stream()
+                .map(checkinMapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<CheckinResponse> getJourneyFeedByCursor(UUID journeyId, User currentUser, LocalDateTime cursor, int limit) {
+        if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
+            throw new BadRequestException("Bạn không có quyền xem hành trình này");
+        }
+        
+        if (cursor == null) {
+            cursor = LocalDateTime.now();
+        }
+        Pageable pageable = PageRequest.of(0, limit);
+
+        return checkinRepository.findJourneyFeedByCursor(journeyId, cursor, pageable)
+                .stream()
+                .map(checkinMapper::toResponse)
+                .collect(Collectors.toList());
     }
 }

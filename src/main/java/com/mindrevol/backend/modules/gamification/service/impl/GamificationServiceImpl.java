@@ -1,34 +1,36 @@
 package com.mindrevol.backend.modules.gamification.service.impl;
 
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.List;
-import java.util.UUID;
-import java.util.stream.Collectors;
-
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
 import com.mindrevol.backend.modules.gamification.dto.response.BadgeResponse;
-import com.mindrevol.backend.modules.gamification.entity.Badge;
-import com.mindrevol.backend.modules.gamification.entity.BadgeConditionType;
-import com.mindrevol.backend.modules.gamification.entity.UserBadge;
-import com.mindrevol.backend.modules.gamification.mapper.GamificationMapper; // Import Mapper
+import com.mindrevol.backend.modules.gamification.dto.response.PointHistoryResponse; 
+import com.mindrevol.backend.modules.gamification.entity.*;
+import com.mindrevol.backend.modules.gamification.mapper.GamificationMapper;
 import com.mindrevol.backend.modules.gamification.repository.BadgeRepository;
+import com.mindrevol.backend.modules.gamification.repository.PointHistoryRepository;
 import com.mindrevol.backend.modules.gamification.repository.UserBadgeRepository;
 import com.mindrevol.backend.modules.gamification.service.GamificationService;
 import com.mindrevol.backend.modules.journey.entity.JourneyParticipant;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
+import com.mindrevol.backend.modules.notification.entity.NotificationType; 
+import com.mindrevol.backend.modules.notification.service.NotificationService; 
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value; // Import Value để dùng config
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.Set;
+import java.util.UUID;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -38,10 +40,21 @@ public class GamificationServiceImpl implements GamificationService {
     private final JourneyParticipantRepository participantRepository;
     private final BadgeRepository badgeRepository;
     private final UserBadgeRepository userBadgeRepository;
-    private final GamificationMapper gamificationMapper; // Inject Mapper
-    private final UserRepository userRepository; 
-    private static final int FREEZE_ITEM_COST = 500; // 500 điểm đổi 1 vé
-    private static final int POINTS_PER_CHECKIN = 50; // Mỗi lần check-in được 50 điểm
+    private final PointHistoryRepository pointHistoryRepository;
+    private final UserRepository userRepository;
+    private final NotificationService notificationService;
+    private final GamificationMapper gamificationMapper;
+
+    // --- SỬ DỤNG CONFIG TỪ APPLICATION.PROPERTIES ---
+    @Value("${app.gamification.points.item-freeze-cost}")
+    private int freezeItemCost;
+
+    @Value("${app.gamification.points.checkin-normal}")
+    private int pointsPerCheckin;
+    
+    @Value("${app.gamification.points.checkin-comeback}")
+    private int pointsPerComeback;
+    // -----------------------------------------------
 
     @Override
     @Async("taskExecutor")
@@ -55,49 +68,134 @@ public class GamificationServiceImpl implements GamificationService {
 
         LocalDate today = LocalDate.now();
         LocalDate lastCheckin = participant.getLastCheckinAt();
-
-        // LOGIC TÍNH STREAK
+        
+        // --- 1. LOGIC TÍNH STREAK ---
         int currentStreak = participant.getCurrentStreak();
+        boolean isFirstCheckinToday = false;
 
         if (lastCheckin != null) {
             if (lastCheckin.isEqual(today)) {
-                log.info("User already checked in today. Streak remains: {}", currentStreak);
-            } else if (lastCheckin.isEqual(today.minusDays(1))) {
-                currentStreak++;
-                participant.setCurrentStreak(currentStreak);
-                participant.setLastCheckinAt(today);
-                participantRepository.save(participant);
+                log.info("User already checked in today.");
             } else {
-                currentStreak = 1;
+                isFirstCheckinToday = true; // Đánh dấu là lần đầu
+                if (lastCheckin.isEqual(today.minusDays(1))) {
+                    currentStreak++;
+                } else {
+                    currentStreak = 1; // Mất chuỗi
+                }
                 participant.setCurrentStreak(currentStreak);
                 participant.setLastCheckinAt(today);
                 participantRepository.save(participant);
             }
         } else {
+            isFirstCheckinToday = true;
             currentStreak = 1;
             participant.setCurrentStreak(currentStreak);
             participant.setLastCheckinAt(today);
             participantRepository.save(participant);
         }
-        
-     // 1. CỘNG ĐIỂM
-        awardPoints(checkin.getUser(), POINTS_PER_CHECKIN);
 
-        // 2. XỬ LÝ STREAK VỚI TRẠNG THÁI 'REST'
-        if (checkin.getStatus() == CheckinStatus.REST) {
-            // Nếu là ngày nghỉ:
-            // - Cập nhật ngày check-in mới nhất là hôm nay (để ngày mai không bị reset về 0)
-            // - KHÔNG tăng streak (giữ nguyên số streak hiện tại)
-            participant.setLastCheckinAt(LocalDate.now());
-            participantRepository.save(participant);
-            
-            log.info("User used Freeze Streak. Streak maintained at: {}", participant.getCurrentStreak());
-            return; // Kết thúc, không xét badge streak
+        // --- 2. CỘNG ĐIỂM (CHỈ CỘNG NẾU LÀ LẦN ĐẦU TRONG NGÀY) ---
+        // Chống spam điểm
+        if (isFirstCheckinToday && (checkin.getStatus() == CheckinStatus.NORMAL || checkin.getStatus() == CheckinStatus.COMEBACK)) {
+            // Sử dụng giá trị từ Config
+            long pointsEarned = (checkin.getStatus() == CheckinStatus.COMEBACK) ? pointsPerComeback : pointsPerCheckin; 
+            awardPoints(checkin.getUser(), (int) pointsEarned, "Check-in: " + checkin.getJourney().getName());
         }
 
-        checkAndAwardBadges(checkin, currentStreak);
+        // --- 3. XỬ LÝ BADGE ---
+        if (checkin.getStatus() != CheckinStatus.REST) {
+            checkAndAwardBadges(checkin, currentStreak);
+        }
     }
 
+    @Override
+    @Transactional
+    public void awardPoints(User user, int amount, String reason) {
+        user.setPoints(user.getPoints() + amount);
+        userRepository.save(user);
+
+        PointHistory history = PointHistory.builder()
+                .user(user)
+                .amount((long) amount)
+                .balanceAfter(user.getPoints())
+                .reason(reason)
+                .source(PointSource.CHECKIN)
+                .build();
+        pointHistoryRepository.save(history);
+    }
+
+    // --- FIX N+1 QUERY VÀ THÊM NOTIFICATION ---
+    private void checkAndAwardBadges(Checkin checkin, int currentStreak) {
+        // Lấy tất cả badge ID user đã có (1 Query duy nhất)
+        Set<Long> ownedBadgeIds = userBadgeRepository.findBadgeIdsByUserId(checkin.getUser().getId());
+
+        List<Badge> streakBadges = badgeRepository.findByConditionType(BadgeConditionType.STREAK);
+        
+        for (Badge badge : streakBadges) {
+            // Kiểm tra trong RAM (nhanh) thay vì gọi DB
+            if (currentStreak >= badge.getConditionValue() && !ownedBadgeIds.contains(badge.getId())) {
+                awardBadge(checkin.getUser(), badge, checkin.getJourney().getId());
+                ownedBadgeIds.add(badge.getId()); // Update set local để tránh lỗi logic nếu loop tiếp
+            }
+        }
+
+        if (checkin.getStatus() == CheckinStatus.COMEBACK) {
+            List<Badge> comebackBadges = badgeRepository.findByConditionType(BadgeConditionType.COMEBACK);
+            for (Badge badge : comebackBadges) {
+                if (!ownedBadgeIds.contains(badge.getId())) {
+                    awardBadge(checkin.getUser(), badge, checkin.getJourney().getId());
+                }
+            }
+        }
+    }
+
+    private void awardBadge(User user, Badge badge, UUID journeyId) {
+        UserBadge userBadge = UserBadge.builder()
+                .user(user)
+                .badge(badge)
+                .journeyId(journeyId)
+                .earnedAt(LocalDateTime.now())
+                .build();
+        userBadgeRepository.save(userBadge);
+        
+        // --- GỬI THÔNG BÁO CHÚC MỪNG ---
+        notificationService.sendAndSaveNotification(
+                user.getId(),
+                null, // System gửi
+                NotificationType.SYSTEM, // Hoặc tạo loại mới BADGE_EARNED
+                "Huy hiệu mới! 🏆",
+                "Chúc mừng! Bạn đã đạt huy hiệu [" + badge.getName() + "]",
+                badge.getId().toString(),
+                badge.getIconUrl()
+        );
+        log.info("Awarded badge [{}] to user [{}]", badge.getName(), user.getId());
+    }
+    
+    @Override
+    @Transactional
+    public boolean buyFreezeStreakItem(User user) {
+        // Sử dụng giá trị từ Config
+        if (user.getPoints() < freezeItemCost) {
+            throw new BadRequestException("Bạn không đủ điểm! Cần " + freezeItemCost + " điểm.");
+        }
+        user.setPoints(user.getPoints() - freezeItemCost);
+        user.setFreezeStreakCount(user.getFreezeStreakCount() + 1);
+        userRepository.save(user);
+        
+        // Log lịch sử trừ tiền
+        PointHistory history = PointHistory.builder()
+                .user(user)
+                .amount((long) -freezeItemCost) // Số âm
+                .balanceAfter(user.getPoints())
+                .reason("Mua vé đóng băng")
+                .source(PointSource.SHOP_PURCHASE)
+                .build();
+        pointHistoryRepository.save(history);
+        
+        return true;
+    }
+    
     @Override
     @Transactional
     public void refreshUserStreak(UUID journeyId, Long userId) {
@@ -119,65 +217,21 @@ public class GamificationServiceImpl implements GamificationService {
         }
     }
 
+    // --- CÁC HÀM GET DỮ LIỆU ---
     @Override
     public List<BadgeResponse> getUserBadges(User user) {
         return userBadgeRepository.findByUserIdOrderByEarnedAtDesc(user.getId())
                 .stream()
-                .map(gamificationMapper::toResponse) // Dùng method reference
+                .map(gamificationMapper::toResponse)
                 .collect(Collectors.toList());
     }
     
+    // Thêm hàm lấy lịch sử điểm (nhớ thêm vào Interface)
     @Override
-    @Transactional
-    public boolean buyFreezeStreakItem(User user) {
-        // 1. Kiểm tra đủ tiền không
-        if (user.getPoints() < FREEZE_ITEM_COST) {
-            throw new BadRequestException("Bạn không đủ điểm! Cần " + FREEZE_ITEM_COST + " điểm.");
-        }
-
-        // 2. Trừ tiền, cộng đồ
-        user.setPoints(user.getPoints() - FREEZE_ITEM_COST);
-        user.setFreezeStreakCount(user.getFreezeStreakCount() + 1);
-        
-        userRepository.save(user); // Nhớ inject UserRepository
-        log.info("User {} bought a Freeze Streak item. Remaining points: {}", user.getId(), user.getPoints());
-        return true;
-    }
-
-    @Override
-    @Transactional
-    public void awardPoints(User user, int amount) {
-        user.setPoints(user.getPoints() + amount);
-        userRepository.save(user);
-    }
-
-    private void checkAndAwardBadges(Checkin checkin, int currentStreak) {
-        List<Badge> streakBadges = badgeRepository.findByConditionType(BadgeConditionType.STREAK);
-        List<Badge> comebackBadges = badgeRepository.findByConditionType(BadgeConditionType.COMEBACK);
-
-        for (Badge badge : streakBadges) {
-            if (currentStreak >= badge.getConditionValue()) {
-                awardBadgeIfNotExists(checkin.getUser(), badge, checkin.getJourney().getId());
-            }
-        }
-
-        if (checkin.getStatus() == CheckinStatus.COMEBACK) {
-            for (Badge badge : comebackBadges) {
-                awardBadgeIfNotExists(checkin.getUser(), badge, checkin.getJourney().getId());
-            }
-        }
-    }
-
-    private void awardBadgeIfNotExists(User user, Badge badge, java.util.UUID journeyId) {
-        if (!userBadgeRepository.existsByUserIdAndBadgeId(user.getId(), badge.getId())) {
-            UserBadge userBadge = UserBadge.builder()
-                    .user(user)
-                    .badge(badge)
-                    .journeyId(journeyId)
-                    .earnedAt(LocalDateTime.now())
-                    .build();
-            userBadgeRepository.save(userBadge);
-            log.info("Awarded badge [{}] to user [{}]", badge.getName(), user.getId());
-        }
+    public List<PointHistoryResponse> getPointHistory(User user) {
+        return pointHistoryRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
+                .stream()
+                .map(gamificationMapper::toPointHistoryResponse) // Sử dụng Mapper
+                .collect(Collectors.toList());
     }
 }

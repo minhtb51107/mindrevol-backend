@@ -65,10 +65,8 @@ public class UserServiceImpl implements UserService {
         }
 
         userMapper.updateUserFromRequest(request, user);
-
         User updatedUser = userRepository.save(user);
         log.info("User ID {} updated profile.", user.getId());
-
         return buildUserProfile(updatedUser, user);
     }
     
@@ -77,29 +75,50 @@ public class UserServiceImpl implements UserService {
     public void updateFcmToken(Long userId, String token) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        
         user.setFcmToken(token);
         userRepository.save(user);
     }
 
-    private User getUserByEmail(String email) {
-        return userRepository.findByEmail(email)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
-    }
-    
     @Override
     public User getUserById(Long id) {
         return userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng với ID: " + id));
     }
 
+    // --- HÀM MỚI: XÓA TÀI KHOẢN ---
+    @Override
+    @Transactional
+    public void deleteMyAccount(Long userId) {
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // 1. Đổi thông tin Unique để giải phóng (tránh lỗi khi đăng ký lại)
+        long timestamp = System.currentTimeMillis();
+        String suffix = "_deleted_" + timestamp;
+
+        user.setEmail(user.getEmail() + suffix);
+        user.setHandle(user.getHandle() + suffix);
+        
+        // 2. Lưu thông tin rác này xuống DB trước
+        userRepository.save(user); 
+        
+        // 3. Xóa (Soft Delete sẽ được kích hoạt bởi @SQLDelete trong Entity)
+        userRepository.deleteById(user.getId());
+        
+        log.info("User {} deleted account (Soft Delete). Email/Handle freed.", userId);
+    }
+    // ------------------------------
+
+    private User getUserByEmail(String email) {
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy user: " + email));
+    }
+
     private UserProfileResponse buildUserProfile(User targetUser, User viewer) {
         UserProfileResponse response = userMapper.toProfileResponse(targetUser);
-        
         response.setFollowerCount(0); 
         response.setFollowingCount(0);
         response.setFollowedByCurrentUser(false);
-
         return response;
     }
 }

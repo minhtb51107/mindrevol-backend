@@ -50,28 +50,4 @@
         </createIndex>
     </changeSet>
 
-    <changeSet id="004-02-create-checkin-comments" author="minh">
-        <createTable tableName="checkin_comments">
-            <column name="id" type="UUID">
-                <constraints primaryKey="true" nullable="false"/>
-            </column>
-            <column name="checkin_id" type="UUID">
-                <constraints nullable="false"/>
-            </column>
-            <column name="user_id" type="BIGINT">
-                <constraints nullable="false"/>
-            </column>
-            <column name="content" type="TEXT">
-                <constraints nullable="false"/>
-            </column>
-            <column name="created_at" type="TIMESTAMP">
-                <constraints nullable="false"/>
-            </column>
-        </createTable>
-        
-        <addForeignKeyConstraint baseTableName="checkin_comments" baseColumnNames="checkin_id"
-                                 referencedTableName="checkins" referencedColumnNames="id"
-                                 constraintName="fk_comment_checkin"/>
-    </changeSet>
-
-</databaseChangeLog>
+    </databaseChangeLog>

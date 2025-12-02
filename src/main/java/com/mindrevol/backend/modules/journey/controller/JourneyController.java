@@ -8,6 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PatchMapping; // Import Patch
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -18,6 +19,7 @@ import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.journey.dto.request.CreateJourneyRequest;
 import com.mindrevol.backend.modules.journey.dto.request.JoinJourneyRequest;
+import com.mindrevol.backend.modules.journey.dto.request.UpdateJourneySettingsRequest; // Import DTO mới
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyWidgetResponse;
 import com.mindrevol.backend.modules.journey.dto.response.RoadmapStatusResponse;
@@ -34,36 +36,55 @@ public class JourneyController {
 
     private final JourneyService journeyService;
 
-    // API 1: Tạo hành trình mới
     @PostMapping
     public ResponseEntity<ApiResponse<JourneyResponse>> createJourney(
             @Valid @RequestBody CreateJourneyRequest request,
-            @AuthenticationPrincipal User currentUser) { // Lấy user từ Token
-        
+            @AuthenticationPrincipal User currentUser) {
         JourneyResponse response = journeyService.createJourney(request, currentUser);
         return ResponseEntity.status(HttpStatus.CREATED)
                 .body(ApiResponse.success(response, "Tạo hành trình thành công"));
     }
 
-    // API 2: Tham gia hành trình bằng mã
     @PostMapping("/join")
     public ResponseEntity<ApiResponse<JourneyResponse>> joinJourney(
             @Valid @RequestBody JoinJourneyRequest request,
             @AuthenticationPrincipal User currentUser) {
-        
         JourneyResponse response = journeyService.joinJourney(request, currentUser);
         return ResponseEntity.ok(ApiResponse.success(response, "Tham gia thành công"));
     }
 
-    // API 3: Lấy danh sách hành trình của tôi (Trang chủ)
     @GetMapping("/me")
     public ResponseEntity<ApiResponse<List<JourneyResponse>>> getMyJourneys(
             @AuthenticationPrincipal User currentUser) {
-        
         List<JourneyResponse> response = journeyService.getMyJourneys(currentUser);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách thành công"));
     }
-    
+
+    // --- CÁC API MỚI ---
+
+    // 1. Rời khỏi hành trình (Tự rời)
+    @DeleteMapping("/{journeyId}/leave")
+    public ResponseEntity<ApiResponse<Void>> leaveJourney(
+            @PathVariable UUID journeyId,
+            @AuthenticationPrincipal User currentUser) {
+        
+        journeyService.leaveJourney(journeyId, currentUser);
+        return ResponseEntity.ok(ApiResponse.success("Đã rời khỏi hành trình"));
+    }
+
+    // 2. Cập nhật cài đặt hành trình (Dành cho Admin)
+    @PatchMapping("/{journeyId}/settings")
+    public ResponseEntity<ApiResponse<JourneyResponse>> updateSettings(
+            @PathVariable UUID journeyId,
+            @RequestBody UpdateJourneySettingsRequest request,
+            @AuthenticationPrincipal User currentUser) {
+        
+        JourneyResponse response = journeyService.updateJourneySettings(journeyId, request, currentUser);
+        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật cài đặt thành công"));
+    }
+
+    // -------------------
+
     @DeleteMapping("/{journeyId}/members/{memberId}")
     public ResponseEntity<ApiResponse<Void>> kickMember(
             @PathVariable UUID journeyId,
@@ -78,6 +99,7 @@ public class JourneyController {
     public ApiResponse<JourneyWidgetResponse> getWidgetInfo(@PathVariable UUID id) {
         Long currentUserId = SecurityUtils.getCurrentUserId(); 
         
+        // Cache đã được xử lý ở tầng Service, Controller chỉ việc gọi
         return ApiResponse.success(journeyService.getWidgetInfo(id, currentUserId), "Lấy thông tin Widget thành công");
     }
 }

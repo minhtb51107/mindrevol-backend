@@ -36,16 +36,22 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         Bucket bucket;
         
+        // Phân loại request để áp dụng Rate Limit
         if (uri.startsWith("/api/v1/auth/login") || uri.startsWith("/api/v1/auth/register")) {
             bucket = rateLimitingService.resolveLoginBucket(ip);
-        } else if (uri.startsWith("/api/v1/")) {
+        } 
+        // --- THÊM DÒNG NÀY: Áp dụng Strict Mode cho API Join Journey ---
+        else if (uri.contains("/journeys/join")) {
+            bucket = rateLimitingService.resolveStrictBucket(ip);
+        }
+        // -------------------------------------------------------------
+        else if (uri.startsWith("/api/v1/")) {
             bucket = rateLimitingService.resolveGeneralBucket(ip);
         } else {
             filterChain.doFilter(request, response);
             return;
         }
 
-        // 2. Thử lấy 1 token
         ConsumptionProbe probe = bucket.tryConsumeAndReturnRemaining(1);
 
         if (probe.isConsumed()) {
@@ -62,7 +68,8 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
             ApiResponse<Void> errorResponse = ApiResponse.error(
                     429, 
-                    "Bạn đã gửi quá nhiều yêu cầu. Vui lòng thử lại sau " + waitForRefill + " giây."
+                    "Thao tác quá nhanh. Vui lòng thử lại sau " + waitForRefill + " giây.",
+                    "RATE_LIMIT_EXCEEDED"
             );
             
             response.getWriter().write(objectMapper.writeValueAsString(errorResponse));

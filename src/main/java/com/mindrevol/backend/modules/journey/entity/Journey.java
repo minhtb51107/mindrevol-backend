@@ -59,16 +59,23 @@ public class Journey {
     
     @Column(name = "setting_has_streak", nullable = false)
     @Builder.Default
-    private boolean hasStreak = true; // Có tính chuỗi không?
+    private boolean hasStreak = true; 
 
     @Column(name = "setting_req_freeze_ticket", nullable = false)
     @Builder.Default
-    private boolean requiresFreezeTicket = true; // Nghỉ có mất vé không?
+    private boolean requiresFreezeTicket = true; 
 
     @Column(name = "setting_is_hardcore", nullable = false)
     @Builder.Default
-    private boolean isHardcore = true; // Nhắc nhở gắt hay nhẹ nhàng?
+    private boolean isHardcore = true; 
     
+    // --- THÊM PHẦN NÀY VÀO ---
+    @Enumerated(EnumType.STRING)
+    @Column(name = "interaction_type", nullable = false)
+    @Builder.Default
+    private InteractionType interactionType = InteractionType.GROUP_DISCUSS; 
+    // -------------------------
+
     @Column(name = "created_at", nullable = false, updatable = false)
     @CreatedDate
     private LocalDateTime createdAt;

@@ -25,6 +25,12 @@ import com.mindrevol.backend.modules.checkin.service.CheckinService;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
 import com.mindrevol.backend.modules.user.entity.User;
 
+import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse; // Import mới
+import java.util.Map; // Import mới
+import java.time.LocalDateTime; // Import LocalDateTime
+import java.util.List; // Import List
+import org.springframework.web.bind.annotation.RequestParam;
+
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
@@ -64,5 +70,55 @@ public class CheckinController {
         
         reactionService.toggleReaction(request, currentUser);
         return ResponseEntity.ok(ApiResponse.success("Success"));
+    }
+    
+    @PostMapping("/{checkinId}/comments")
+    public ResponseEntity<ApiResponse<CommentResponse>> postComment(
+            @PathVariable UUID checkinId,
+            @RequestBody Map<String, String> body, // Client gửi JSON: { "content": "..." }
+            @AuthenticationPrincipal User currentUser) {
+        
+        String content = body.get("content");
+        if (content == null || content.isBlank()) {
+            // Có thể throw Exception hoặc trả lỗi tay
+            throw new com.mindrevol.backend.common.exception.BadRequestException("Nội dung không được để trống");
+        }
+        
+        CommentResponse response = checkinService.postComment(checkinId, content, currentUser);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    @GetMapping("/{checkinId}/comments")
+    public ResponseEntity<ApiResponse<Page<CommentResponse>>> getComments(
+            @PathVariable UUID checkinId,
+            @PageableDefault(size = 20) Pageable pageable) {
+        
+        Page<CommentResponse> response = checkinService.getComments(checkinId, pageable);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+    
+ // 1. Lấy Feed Tổng Hợp (Home Feed)
+    // Client gọi: GET /api/v1/checkins/feed?limit=10 (lần đầu)
+    // Client gọi: GET /api/v1/checkins/feed?limit=10&cursor=2023-10-25T10:00:00 (load thêm)
+    @GetMapping("/feed")
+    public ResponseEntity<ApiResponse<List<CheckinResponse>>> getHomeFeed(
+            @RequestParam(required = false) LocalDateTime cursor, 
+            @RequestParam(defaultValue = "10") int limit,
+            @AuthenticationPrincipal User currentUser) {
+        
+        List<CheckinResponse> feed = checkinService.getUnifiedFeed(currentUser, cursor, limit);
+        return ResponseEntity.ok(ApiResponse.success(feed));
+    }
+
+    // 2. Lấy Feed Journey (Dạng Cursor - Tối ưu hơn dạng Page cũ)
+    @GetMapping("/journey/{journeyId}/cursor")
+    public ResponseEntity<ApiResponse<List<CheckinResponse>>> getJourneyFeedCursor(
+            @PathVariable UUID journeyId,
+            @RequestParam(required = false) LocalDateTime cursor,
+            @RequestParam(defaultValue = "10") int limit,
+            @AuthenticationPrincipal User currentUser) {
+        
+        List<CheckinResponse> feed = checkinService.getJourneyFeedByCursor(journeyId, currentUser, cursor, limit);
+        return ResponseEntity.ok(ApiResponse.success(feed));
     }
 }

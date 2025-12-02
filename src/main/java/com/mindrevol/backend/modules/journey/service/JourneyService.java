@@ -10,8 +10,14 @@ import java.util.UUID;
 public interface JourneyService {
     JourneyResponse createJourney(CreateJourneyRequest request, User currentUser);
     JourneyResponse joinJourney(JoinJourneyRequest request, User currentUser);
+    
+    // --- CẬP NHẬT MỚI ---
+    void leaveJourney(UUID journeyId, User currentUser);
+    JourneyResponse updateJourneySettings(UUID journeyId, UpdateJourneySettingsRequest request, User currentUser);
+    // --------------------
+
     List<JourneyResponse> getMyJourneys(User currentUser);
     void kickMember(UUID journeyId, Long memberId, User currentUser);
-	List<RoadmapStatusResponse> getJourneyRoadmap(UUID journeyId, Long currentUserId);
-	JourneyWidgetResponse getWidgetInfo(UUID journeyId, Long userId);
+    List<RoadmapStatusResponse> getJourneyRoadmap(UUID journeyId, Long currentUserId);
+    JourneyWidgetResponse getWidgetInfo(UUID journeyId, Long userId);
 }
