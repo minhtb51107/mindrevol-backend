@@ -3,7 +3,7 @@ package com.mindrevol.backend.modules.checkin.service.impl;
 import com.mindrevol.backend.common.event.CheckinSuccessEvent;
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
-import com.mindrevol.backend.common.utils.SecurityUtils; // <--- [QUAN TRỌNG] Thêm dòng này
+import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
@@ -24,9 +24,11 @@ import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyTaskRepository;
 import com.mindrevol.backend.modules.storage.service.FileStorageService;
 import com.mindrevol.backend.modules.user.entity.User;
+import com.mindrevol.backend.modules.user.repository.UserBlockRepository;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict; // <--- IMPORT QUAN TRỌNG
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -37,6 +39,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
@@ -55,8 +58,13 @@ public class CheckinServiceImpl implements CheckinService {
     
     private final CheckinCommentRepository commentRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final UserBlockRepository userBlockRepository; 
 
     @Override
+    // --- THÊM DÒNG NÀY: Xóa cache widget ngay khi check-in thành công ---
+    // Key phải khớp với format bên JourneyServiceImpl: journeyId + '-' + userId
+    @CacheEvict(value = "journey_widget", key = "#request.journeyId + '-' + #currentUser.id")
+    // -------------------------------------------------------------------
     public CheckinResponse createCheckin(CheckinRequest request, User currentUser) {
         Journey journey = journeyRepository.findById(request.getJourneyId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
@@ -73,6 +81,8 @@ public class CheckinServiceImpl implements CheckinService {
         return saveCheckinTransaction(currentUser, journey, request, imageUrl);
     }
 
+    // ... [Giữ nguyên toàn bộ phần còn lại của class, không thay đổi logic] ...
+    
     @Transactional
     protected CheckinResponse saveCheckinTransaction(User currentUser, Journey journey, CheckinRequest request, String imageUrl) {
         JourneyTask task = null;
@@ -151,8 +161,6 @@ public class CheckinServiceImpl implements CheckinService {
         }
         return CheckinStatus.NORMAL;
     }
-    
-    // --- TÍNH NĂNG COMMENT ---
 
     @Override
     @Transactional
@@ -183,23 +191,19 @@ public class CheckinServiceImpl implements CheckinService {
 
     @Override
     public Page<CommentResponse> getComments(UUID checkinId, Pageable pageable) {
-        // [FIXED] Truyền thêm SecurityUtils.getCurrentUserId() để lọc người bị chặn
         return commentRepository.findByCheckinId(checkinId, SecurityUtils.getCurrentUserId(), pageable)
                 .map(checkinMapper::toCommentResponse);
     }
-    
-    // --- TÍNH NĂNG FEED ---
 
     @Override
     public List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit) {
         if (cursor == null) {
             cursor = LocalDateTime.now();
         }
-        
         Pageable pageable = PageRequest.of(0, limit);
-        
-        // Hàm này đã truyền currentUser.getId() rồi, OK
-        return checkinRepository.findUnifiedFeed(currentUser.getId(), cursor, pageable)
+        Set<Long> excludedUserIds = getExcludedUserIds(currentUser.getId());
+
+        return checkinRepository.findUnifiedFeed(currentUser.getId(), cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
                 .collect(Collectors.toList());
@@ -215,11 +219,17 @@ public class CheckinServiceImpl implements CheckinService {
             cursor = LocalDateTime.now();
         }
         Pageable pageable = PageRequest.of(0, limit);
+        Set<Long> excludedUserIds = getExcludedUserIds(currentUser.getId());
 
-        // [FIXED] Truyền thêm currentUser.getId() vào tham số thứ 2
-        return checkinRepository.findJourneyFeedByCursor(journeyId, currentUser.getId(), cursor, pageable)
+        return checkinRepository.findJourneyFeedByCursor(journeyId, cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
                 .collect(Collectors.toList());
+    }
+
+    private Set<Long> getExcludedUserIds(Long userId) {
+        Set<Long> blockedIds = userBlockRepository.findAllBlockedUserIdsInteraction(userId);
+        blockedIds.add(-1L); 
+        return blockedIds;
     }
 }

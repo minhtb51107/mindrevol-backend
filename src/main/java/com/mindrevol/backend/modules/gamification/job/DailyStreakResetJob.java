@@ -7,6 +7,8 @@ import com.mindrevol.backend.modules.notification.service.NotificationService;
 import com.mindrevol.backend.modules.user.entity.User;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.redisson.api.RLock; // <--- IMPORT
+import org.redisson.api.RedissonClient; // <--- IMPORT
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
@@ -16,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 
 @Component
 @RequiredArgsConstructor
@@ -24,30 +27,51 @@ public class DailyStreakResetJob {
 
     private final JourneyParticipantRepository participantRepository;
     private final NotificationService notificationService;
+    private final RedissonClient redissonClient; // <--- Inject Client
 
     // Chạy lúc 00:05 sáng mỗi ngày
     @Scheduled(cron = "0 5 0 * * ?")
     public void resetStreaks() {
-        log.info("Starting Daily Streak Reset Job...");
-        
+        // --- LOGIC DISTRIBUTED LOCK ---
+        String lockKey = "job:daily_streak_reset";
+        RLock lock = redissonClient.getLock(lockKey);
+
+        try {
+            // Thử lấy lock, chờ 0s, giữ lock trong 30 phút
+            // (Nếu server khác đang chạy rồi thì server này bỏ qua ngay)
+            if (lock.tryLock(0, 30, TimeUnit.MINUTES)) {
+                
+                log.info("Acquired Lock. Starting Daily Streak Reset Job...");
+                executeJobLogic();
+                log.info("Streak Reset Job completed.");
+                
+            } else {
+                log.info("Job is already running on another instance. Skipping.");
+            }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.error("Lock interrupted", e);
+        } finally {
+            if (lock.isHeldByCurrentThread()) {
+                lock.unlock();
+            }
+        }
+    }
+
+    // Tách logic chính ra hàm riêng
+    private void executeJobLogic() {
         LocalDate yesterday = LocalDate.now().minusDays(1);
-        int batchSize = 100; // Xử lý mỗi lần 100 user
+        int batchSize = 100;
         Pageable pageable = PageRequest.of(0, batchSize);
         
         boolean hasNext = true;
-
         while (hasNext) {
-            // Chúng ta phải thực hiện trong transaction nhỏ để commit dữ liệu
-            // Nếu lỗi ở batch này thì không ảnh hưởng batch khác
             hasNext = processBatch(yesterday, pageable);
         }
-
-        log.info("Streak Reset Job completed.");
     }
 
-    @Transactional // Transaction nằm ở mức Batch nhỏ
+    @Transactional
     public boolean processBatch(LocalDate yesterday, Pageable pageable) {
-        // Query tối ưu: Chỉ lấy những người CẦN reset
         Slice<JourneyParticipant> slice = participantRepository.findParticipantsToResetStreak(yesterday, pageable);
         List<JourneyParticipant> participants = slice.getContent();
 
@@ -57,14 +81,9 @@ public class DailyStreakResetJob {
 
         for (JourneyParticipant p : participants) {
             int oldStreak = p.getCurrentStreak();
-
-            // 1. Reset Streak
             p.setCurrentStreak(0);
-            // Không cần gọi save(p) vì đang trong @Transactional, Hibernate tự detect thay đổi.
-            // Nhưng gọi save() cũng không sao để tường minh.
             participantRepository.save(p);
 
-            // 2. Gửi thông báo AN ỦI (Chỉ gửi thông báo, logic gửi mail/push nên là async)
             try {
                 notificationService.sendAndSaveNotification(
                         p.getUser().getId(),
@@ -75,24 +94,16 @@ public class DailyStreakResetJob {
                         p.getJourney().getId().toString(),
                         null
                 );
-
-                // 3. Gửi thông báo cho bạn bè (Cân nhắc: Nếu friend list quá lớn, phần này nên đẩy vào Queue riêng)
                 notifyFriendsToComfort(p.getJourney().getId(), p.getUser(), oldStreak);
-                
             } catch (Exception e) {
                 log.error("Error sending notification for user {}", p.getUser().getId(), e);
-                // Catch lỗi để không làm rollback việc reset streak
             }
         }
-        
         return slice.hasNext();
     }
 
     private void notifyFriendsToComfort(java.util.UUID journeyId, User failedUser, int lostStreak) {
-        // Lưu ý: Logic này vẫn có rủi ro nếu 1 nhóm có 1000 người.
-        // Tạm thời giữ nguyên logic cũ của bạn, nhưng về sau nên move vào Message Queue.
         List<JourneyParticipant> friends = participantRepository.findAllByJourneyId(journeyId);
-
         for (JourneyParticipant friend : friends) {
             if (!friend.getUser().getId().equals(failedUser.getId())) {
                 notificationService.sendAndSaveNotification(

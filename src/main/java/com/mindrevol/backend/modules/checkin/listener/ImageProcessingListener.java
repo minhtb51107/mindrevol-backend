@@ -25,23 +25,23 @@ public class ImageProcessingListener {
     private final CheckinRepository checkinRepository;
     private final FileStorageService fileStorageService;
 
-    @Async("taskExecutor") // Chạy ở luồng riêng (Pool AsyncConfig)
+    // --- THAY ĐỔI TẠI ĐÂY: Dùng Pool riêng cho ảnh ---
+    @Async("imageTaskExecutor") 
+    // ------------------------------------------------
     @EventListener
     @Transactional
     public void handleImageProcessing(CheckinSuccessEvent event) {
         log.info("Bắt đầu xử lý ảnh cho Checkin ID: {}", event.getCheckinId());
 
         try {
-            // 1. Lấy thông tin Checkin
+            // [Giữ nguyên logic xử lý ảnh cũ của bạn]
             Checkin checkin = checkinRepository.findById(event.getCheckinId()).orElse(null);
             if (checkin == null || checkin.getImageUrl() == null || checkin.getImageUrl().isEmpty()) {
                 return;
             }
 
-            // 2. Tải ảnh gốc về từ Storage (MinIO/S3)
             InputStream originalImageStream = fileStorageService.downloadFile(checkin.getImageUrl());
 
-            // 3. Nén ảnh (Resize về 400x400, chất lượng 80%)
             ByteArrayOutputStream os = new ByteArrayOutputStream();
             Thumbnails.of(originalImageStream)
                     .size(400, 400)
@@ -51,11 +51,8 @@ public class ImageProcessingListener {
             byte[] thumbnailData = os.toByteArray();
             InputStream thumbnailStream = new ByteArrayInputStream(thumbnailData);
             
-            // Tạo tên file thumbnail: uuid_originalName_thumb.jpg
-            // Hack nhẹ: Lấy tên file từ URL cũ hoặc tạo mới
             String thumbName = UUID.randomUUID() + "_thumb.jpg";
 
-            // 4. Upload Thumbnail lên Storage
             String thumbnailUrl = fileStorageService.uploadStream(
                     thumbnailStream, 
                     thumbName, 
@@ -63,7 +60,6 @@ public class ImageProcessingListener {
                     thumbnailData.length
             );
 
-            // 5. Cập nhật Database
             checkin.setThumbnailUrl(thumbnailUrl);
             checkinRepository.save(checkin);
 
@@ -71,7 +67,6 @@ public class ImageProcessingListener {
 
         } catch (Exception e) {
             log.error("Lỗi xử lý ảnh cho Checkin {}: {}", event.getCheckinId(), e.getMessage());
-            // Có thể thêm logic retry hoặc alert admin ở đây
         }
     }
 }

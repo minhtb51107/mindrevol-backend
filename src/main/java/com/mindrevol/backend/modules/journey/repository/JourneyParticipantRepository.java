@@ -25,28 +25,27 @@ public interface JourneyParticipantRepository extends JpaRepository<JourneyParti
     Optional<JourneyParticipant> findByJourneyIdAndUserId(UUID journeyId, Long userId);
     
     @Modifying
+    // --- SỬA LOGIC: Thêm điều kiện lọc deleted_at cho native query ---
     @Query(value = """
         UPDATE journey_participants 
         SET current_streak = 0 
         WHERE current_streak > 0 
+        AND deleted_at IS NULL  -- <--- QUAN TRỌNG
         AND id NOT IN (
             SELECT p.id 
             FROM journey_participants p
             JOIN checkins c ON c.journey_id = p.journey_id AND c.user_id = p.user_id
             WHERE c.created_at >= CURRENT_DATE - INTERVAL '1 DAY'
+            AND c.deleted_at IS NULL -- <--- QUAN TRỌNG: Checkin cũng phải chưa xóa
         )
     """, nativeQuery = true)
     void resetStreakForInactiveUsers();
+    // ----------------------------------------------------------------
 
 	List<JourneyParticipant> findAllByJourneyId(UUID id);
 	
-	/**
-     * Tìm các thành viên cần bị Reset Streak:
-     * 1. Hành trình có bật tính năng Streak (hasStreak = true)
-     * 2. Đang có chuỗi > 0
-     * 3. Ngày check-in cuối cùng nhỏ hơn ngày hôm qua (tức là hôm qua không check-in)
-     * Dùng Slice để lấy từng trang dữ liệu nhẹ nhàng.
-     */
+    // Các JPQL Query bên dưới không cần sửa vì Entity đã có @Where(clause = "deleted_at IS NULL")
+    // Hibernate sẽ tự động thêm điều kiện vào JPQL.
     @Query("SELECT jp FROM JourneyParticipant jp " +
            "JOIN FETCH jp.journey j " +
            "JOIN FETCH jp.user u " +
@@ -55,11 +54,6 @@ public interface JourneyParticipantRepository extends JpaRepository<JourneyParti
            "AND (jp.lastCheckinAt IS NULL OR jp.lastCheckinAt < :yesterday)")
     Slice<JourneyParticipant> findParticipantsToResetStreak(@Param("yesterday") LocalDate yesterday, Pageable pageable);
 
-    /**
-     * Tìm các thành viên cần Nhắc nhở Check-in:
-     * 1. Hành trình đang hoạt động (ACTIVE)
-     * 2. Chưa check-in hôm nay (lastCheckinAt < today hoặc null)
-     */
     @Query("SELECT jp FROM JourneyParticipant jp " +
            "JOIN FETCH jp.journey j " +
            "JOIN FETCH jp.user u " +
@@ -67,5 +61,3 @@ public interface JourneyParticipantRepository extends JpaRepository<JourneyParti
            "AND (jp.lastCheckinAt IS NULL OR jp.lastCheckinAt < :today)")
     Slice<JourneyParticipant> findParticipantsToRemind(@Param("today") LocalDate today, Pageable pageable);
 }
-
-
