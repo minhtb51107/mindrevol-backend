@@ -36,5 +36,9 @@
     <include file="changes/024-add-interaction-type.xml" relativeToChangelogFile="true"/>
     <include file="changes/025-create-checkin-comments.xml" relativeToChangelogFile="true"/>
     <include file="changes/026-add-user-version.xml" relativeToChangelogFile="true"/>
+    <include file="changes/027-add-compliance-fields.xml" relativeToChangelogFile="true"/>
+
+    <include file="changes/027-enable-hard-delete.xml" relativeToChangelogFile="true"/>
+    <include file="changes/028-create-user-blocks.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

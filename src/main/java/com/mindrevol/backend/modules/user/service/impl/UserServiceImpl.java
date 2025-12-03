@@ -1,20 +1,29 @@
 package com.mindrevol.backend.modules.user.service.impl;
 
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.common.service.SanitizationService;
+import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
+import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
+import com.mindrevol.backend.modules.gamification.repository.UserBadgeRepository;
+import com.mindrevol.backend.modules.habit.mapper.HabitMapper;
+import com.mindrevol.backend.modules.habit.repository.HabitRepository;
 import com.mindrevol.backend.modules.user.dto.request.UpdateProfileRequest;
+import com.mindrevol.backend.modules.user.dto.response.UserDataExport;
 import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
 import com.mindrevol.backend.modules.user.entity.User;
+import com.mindrevol.backend.modules.user.mapper.FriendshipMapper;
 import com.mindrevol.backend.modules.user.mapper.UserMapper;
+import com.mindrevol.backend.modules.user.repository.FriendshipRepository;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
 import com.mindrevol.backend.modules.user.service.UserService;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Pageable;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +34,13 @@ public class UserServiceImpl implements UserService {
     private final UserRepository userRepository;
     private final UserMapper userMapper;
     private final SanitizationService sanitizationService;
+    private final CheckinRepository checkinRepository;
+    private final CheckinMapper checkinMapper;
+    private final HabitRepository habitRepository;
+    private final HabitMapper habitMapper;
+    private final FriendshipRepository friendshipRepository;
+    private final FriendshipMapper friendshipMapper;
+    private final UserBadgeRepository userBadgeRepository;
 
     @Override
     public UserProfileResponse getMyProfile(String currentEmail) {
@@ -108,6 +124,44 @@ public class UserServiceImpl implements UserService {
         log.info("User {} deleted account (Soft Delete). Email/Handle freed.", userId);
     }
     // ------------------------------
+    
+    @Override
+    public UserDataExport exportMyData(Long userId) {
+        User user = getUserById(userId);
+
+        // 1. Profile
+        UserProfileResponse profile = buildUserProfile(user, user);
+
+        // 2. Habits
+        var habits = habitRepository.findByUserIdAndArchivedFalse(userId).stream()
+                .map(habitMapper::toResponse)
+                .collect(Collectors.toList());
+
+        // 3. Checkins (Lấy hết, không phân trang)
+        var checkins = checkinRepository.findAllByUserIdOrderByCreatedAtDesc(userId).stream() // Cần thêm hàm này ở Repo
+                .map(checkinMapper::toResponse)
+                .collect(Collectors.toList());
+
+        // 4. Friends
+        var friends = friendshipRepository.findAllAcceptedFriendsList(userId).stream() // Đã có hàm này ở phần trước
+                .map(f -> friendshipMapper.mapFriend(f, userId))
+                .collect(Collectors.toList());
+
+        // 5. Badges
+        var badges = userBadgeRepository.findByUserIdOrderByEarnedAtDesc(userId).stream()
+                .map(ub -> ub.getBadge().getName())
+                .collect(Collectors.toList());
+
+        log.info("User {} exported their data.", userId);
+
+        return UserDataExport.builder()
+                .profile(profile)
+                .habits(habits)
+                .checkins(checkins)
+                .friends(friends)
+                .badges(badges)
+                .build();
+    }
 
     private User getUserByEmail(String email) {
         return userRepository.findByEmail(email)

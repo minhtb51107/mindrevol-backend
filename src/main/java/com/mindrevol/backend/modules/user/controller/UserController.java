@@ -3,6 +3,7 @@ package com.mindrevol.backend.modules.user.controller;
 import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.common.utils.SecurityUtils; // Thêm import
 import com.mindrevol.backend.modules.user.dto.request.UpdateProfileRequest;
+import com.mindrevol.backend.modules.user.dto.response.UserDataExport;
 import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.service.UserService;
@@ -69,4 +70,12 @@ public class UserController {
         return ResponseEntity.ok(ApiResponse.success("Tài khoản đã được xóa vĩnh viễn"));
     }
     // ------------------------------
+    
+    @GetMapping("/me/export")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<UserDataExport>> exportData() {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        UserDataExport data = userService.exportMyData(currentUserId);
+        return ResponseEntity.ok(ApiResponse.success(data));
+    }
 }

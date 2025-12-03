@@ -1,11 +1,10 @@
 package com.mindrevol.backend.modules.auth.dto.request;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
+import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
+
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -26,4 +25,13 @@ public class RegisterRequest {
     @Size(min = 3, max = 30, message = "Handle phải từ 3 đến 30 ký tự")
     @Pattern(regexp = "^[a-zA-Z0-9._]+$", message = "Handle chỉ chứa chữ cái, số, dấu chấm và gạch dưới")
     private String handle;
+
+    // --- MỚI: Thêm ngày sinh để kiểm tra độ tuổi (Luật COPPA/GDPR) ---
+    @NotNull(message = "Ngày sinh là bắt buộc")
+    @Past(message = "Ngày sinh phải trong quá khứ")
+    private LocalDate dateOfBirth;
+
+    // --- MỚI: Bắt buộc đồng ý điều khoản ---
+    @AssertTrue(message = "Bạn phải đồng ý với Điều khoản sử dụng và Chính sách quyền riêng tư")
+    private boolean agreedToTerms;
 }

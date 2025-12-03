@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="027-add-cascade-delete-to-user-relations" author="minh">
+        <dropForeignKeyConstraint baseTableName="checkins" constraintName="fk_checkin_user"/>
+        <addForeignKeyConstraint baseTableName="checkins" baseColumnNames="user_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_checkin_user" onDelete="CASCADE"/>
+
+        <dropForeignKeyConstraint baseTableName="habits" constraintName="fk_habit_user"/>
+        <addForeignKeyConstraint baseTableName="habits" baseColumnNames="user_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_habit_user" onDelete="CASCADE"/>
+
+        <dropForeignKeyConstraint baseTableName="journey_participants" constraintName="fk_participant_user"/>
+        <addForeignKeyConstraint baseTableName="journey_participants" baseColumnNames="user_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_participant_user" onDelete="CASCADE"/>
+
+        <dropForeignKeyConstraint baseTableName="checkin_reactions" constraintName="fk_reaction_user"/>
+        <addForeignKeyConstraint baseTableName="checkin_reactions" baseColumnNames="user_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_reaction_user" onDelete="CASCADE"/>
+                                 
+        <dropForeignKeyConstraint baseTableName="messages" constraintName="fk_msg_sender"/>
+        <addForeignKeyConstraint baseTableName="messages" baseColumnNames="sender_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_msg_sender" onDelete="CASCADE"/>
+                                 
+        <dropForeignKeyConstraint baseTableName="user_badges" constraintName="fk_userbadge_user"/>
+        <addForeignKeyConstraint baseTableName="user_badges" baseColumnNames="user_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_userbadge_user" onDelete="CASCADE"/>
+    </changeSet>
+
+</databaseChangeLog>

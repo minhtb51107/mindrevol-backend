@@ -7,5 +7,6 @@ public enum ReportReason {
     VIOLENCE,               // Bạo lực
     HARASSMENT,             // Quấy rối
     FALSE_INFORMATION,      // Thông tin sai lệch
+    COPYRIGHT_INFRINGEMENT, // [MỚI] Vi phạm bản quyền (Bắt buộc theo luật DMCA/Store)
     OTHER                   // Khác
 }

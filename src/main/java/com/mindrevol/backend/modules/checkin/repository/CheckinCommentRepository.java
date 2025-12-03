@@ -14,6 +14,15 @@ import java.util.UUID;
 public interface CheckinCommentRepository extends JpaRepository<CheckinComment, Long> {
     
     // Lấy comment của 1 bài checkin, sắp xếp cũ nhất trước (để đọc theo dòng thời gian)
-    @Query("SELECT c FROM CheckinComment c JOIN FETCH c.user WHERE c.checkin.id = :checkinId ORDER BY c.createdAt ASC")
-    Page<CheckinComment> findByCheckinId(@Param("checkinId") UUID checkinId, Pageable pageable);
+	@Query("SELECT c FROM CheckinComment c " +
+	           "JOIN FETCH c.user u " +
+	           "WHERE c.checkin.id = :checkinId " +
+	           // --- LOGIC BLOCK ---
+	           "AND u.id NOT IN (SELECT ub.blocked.id FROM UserBlock ub WHERE ub.blocker.id = :currentUserId) " +
+	           "AND u.id NOT IN (SELECT ub.blocker.id FROM UserBlock ub WHERE ub.blocked.id = :currentUserId) " +
+	           // -------------------
+	           "ORDER BY c.createdAt ASC")
+	    Page<CheckinComment> findByCheckinId(@Param("checkinId") UUID checkinId, 
+	                                         @Param("currentUserId") Long currentUserId, // <--- Thêm param này
+	                                         Pageable pageable);
 }

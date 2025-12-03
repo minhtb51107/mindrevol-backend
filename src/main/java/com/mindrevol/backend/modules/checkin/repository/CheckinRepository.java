@@ -35,30 +35,40 @@ public interface CheckinRepository extends JpaRepository<Checkin, UUID> {
 
     /**
      * 1. Feed Tổng Hợp (Unified Feed):
-     * Lấy bài viết từ TẤT CẢ Journey mà user tham gia.
-     * Điều kiện: c.createdAt < :cursor (Lấy bài cũ hơn mốc thời gian client gửi lên)
+     * - Lấy bài từ Journey đã tham gia.
+     * - Loại bỏ bài của người TÔI CHẶN (blocker = me).
+     * - Loại bỏ bài của người CHẶN TÔI (blocked = me).
      */
     @Query("SELECT c FROM Checkin c " +
-           "JOIN FETCH c.user " +
+           "JOIN FETCH c.user u " +
            "LEFT JOIN FETCH c.task " +
            "WHERE c.journey.id IN (SELECT p.journey.id FROM JourneyParticipant p WHERE p.user.id = :userId) " +
-           "AND c.createdAt < :cursor " + 
+           "AND c.createdAt < :cursor " +
+           // --- LOGIC BLOCK ---
+           "AND u.id NOT IN (SELECT ub.blocked.id FROM UserBlock ub WHERE ub.blocker.id = :userId) " + // Ko lấy bài người mình chặn
+           "AND u.id NOT IN (SELECT ub.blocker.id FROM UserBlock ub WHERE ub.blocked.id = :userId) " + // Ko lấy bài người chặn mình
+           // -------------------
            "ORDER BY c.createdAt DESC")
     List<Checkin> findUnifiedFeed(@Param("userId") Long userId, 
                                   @Param("cursor") LocalDateTime cursor, 
                                   Pageable pageable);
 
     /**
-     * 2. Feed Journey Đơn Lẻ (Cursor):
-     * Phiên bản tối ưu thay thế cho findByJourneyIdOrderByCreatedAtDesc khi data lớn.
+     * 2. Feed Journey Đơn Lẻ:
+     * - Cũng áp dụng logic tương tự để đảm bảo sạch sẽ.
      */
     @Query("SELECT c FROM Checkin c " +
-           "JOIN FETCH c.user " +
+           "JOIN FETCH c.user u " +
            "LEFT JOIN FETCH c.task " +
            "WHERE c.journey.id = :journeyId " +
            "AND c.createdAt < :cursor " +
+           // --- LOGIC BLOCK ---
+           "AND u.id NOT IN (SELECT ub.blocked.id FROM UserBlock ub WHERE ub.blocker.id = :userId) " +
+           "AND u.id NOT IN (SELECT ub.blocker.id FROM UserBlock ub WHERE ub.blocked.id = :userId) " +
+           // -------------------
            "ORDER BY c.createdAt DESC")
     List<Checkin> findJourneyFeedByCursor(@Param("journeyId") UUID journeyId, 
+                                          @Param("userId") Long userId, // <--- Nhớ thêm param này vào Service gọi
                                           @Param("cursor") LocalDateTime cursor, 
                                           Pageable pageable);
     
@@ -70,4 +80,6 @@ public interface CheckinRepository extends JpaRepository<Checkin, UUID> {
      List<Checkin> findMostLikedCheckins(@Param("journeyId") UUID journeyId, 
                                          @Param("userId") Long userId, 
                                          Pageable pageable);
+    
+    List<Checkin> findAllByUserIdOrderByCreatedAtDesc(Long userId);
 }

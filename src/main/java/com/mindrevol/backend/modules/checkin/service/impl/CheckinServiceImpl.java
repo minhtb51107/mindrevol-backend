@@ -3,18 +3,19 @@ package com.mindrevol.backend.modules.checkin.service.impl;
 import com.mindrevol.backend.common.event.CheckinSuccessEvent;
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
+import com.mindrevol.backend.common.utils.SecurityUtils; // <--- [QUAN TRỌNG] Thêm dòng này
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.entity.CheckinComment;
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
-import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent; // Import Event mới
+import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
-import com.mindrevol.backend.modules.journey.entity.InteractionType; // Import InteractionType
+import com.mindrevol.backend.modules.journey.entity.InteractionType;
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.entity.JourneyTask;
 import com.mindrevol.backend.modules.journey.entity.JourneyType;
@@ -23,7 +24,7 @@ import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyTaskRepository;
 import com.mindrevol.backend.modules.storage.service.FileStorageService;
 import com.mindrevol.backend.modules.user.entity.User;
-import com.mindrevol.backend.modules.user.repository.UserRepository; // Import UserRepository
+import com.mindrevol.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
@@ -33,7 +34,6 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -49,14 +49,12 @@ public class CheckinServiceImpl implements CheckinService {
     private final JourneyRepository journeyRepository;
     private final JourneyParticipantRepository participantRepository;
     private final JourneyTaskRepository journeyTaskRepository;
-    private final UserRepository userRepository; // Cần thiết để save user status
+    private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
     private final CheckinMapper checkinMapper;
     
-    // --- CÁC DEPENDENCY MỚI ---
     private final CheckinCommentRepository commentRepository;
-    private final ApplicationEventPublisher eventPublisher; // Dùng để bắn Event
-    // --------------------------
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     public CheckinResponse createCheckin(CheckinRequest request, User currentUser) {
@@ -125,10 +123,6 @@ public class CheckinServiceImpl implements CheckinService {
 
         checkin = checkinRepository.save(checkin);
         
-        // --- CLEAN UP: Logic cộng điểm đã được xóa khỏi đây ---
-        // Nó sẽ được xử lý bởi GamificationEventListener khi nhận CheckinSuccessEvent
-        
-        // Bắn sự kiện Async để xử lý Gamification & Resize ảnh
         eventPublisher.publishEvent(new CheckinSuccessEvent(
                 checkin.getId(),
                 currentUser.getId(),
@@ -158,7 +152,7 @@ public class CheckinServiceImpl implements CheckinService {
         return CheckinStatus.NORMAL;
     }
     
-    // --- TÍNH NĂNG COMMENT (ĐÃ CLEAN UP) ---
+    // --- TÍNH NĂNG COMMENT ---
 
     @Override
     @Transactional
@@ -166,7 +160,6 @@ public class CheckinServiceImpl implements CheckinService {
         Checkin checkin = checkinRepository.findById(checkinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
 
-        // Validate Interaction Type
         Journey journey = checkin.getJourney();
         if (journey.getInteractionType() == InteractionType.PRIVATE_REPLY) {
             throw new BadRequestException("Hành trình này đang ở chế độ Riêng tư. Hãy dùng tính năng Nhắn tin (Reply) thay vì Bình luận.");
@@ -183,22 +176,19 @@ public class CheckinServiceImpl implements CheckinService {
         
         comment = commentRepository.save(comment);
 
-        // --- CLEAN UP: Thay vì gọi notificationService trực tiếp, ta bắn Event ---
-        // NotificationEventListener sẽ lắng nghe và gửi thông báo
         eventPublisher.publishEvent(new CommentPostedEvent(checkin, currentUser, content));
-        // -----------------------------------------------------------------------
 
         return checkinMapper.toCommentResponse(comment);
     }
 
     @Override
     public Page<CommentResponse> getComments(UUID checkinId, Pageable pageable) {
-        // Sử dụng Mapper thay vì build thủ công
-        return commentRepository.findByCheckinId(checkinId, pageable)
+        // [FIXED] Truyền thêm SecurityUtils.getCurrentUserId() để lọc người bị chặn
+        return commentRepository.findByCheckinId(checkinId, SecurityUtils.getCurrentUserId(), pageable)
                 .map(checkinMapper::toCommentResponse);
     }
     
-    // --- TÍNH NĂNG FEED (ĐÃ CLEAN UP) ---
+    // --- TÍNH NĂNG FEED ---
 
     @Override
     public List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit) {
@@ -208,6 +198,7 @@ public class CheckinServiceImpl implements CheckinService {
         
         Pageable pageable = PageRequest.of(0, limit);
         
+        // Hàm này đã truyền currentUser.getId() rồi, OK
         return checkinRepository.findUnifiedFeed(currentUser.getId(), cursor, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
@@ -225,7 +216,8 @@ public class CheckinServiceImpl implements CheckinService {
         }
         Pageable pageable = PageRequest.of(0, limit);
 
-        return checkinRepository.findJourneyFeedByCursor(journeyId, cursor, pageable)
+        // [FIXED] Truyền thêm currentUser.getId() vào tham số thứ 2
+        return checkinRepository.findJourneyFeedByCursor(journeyId, currentUser.getId(), cursor, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
                 .collect(Collectors.toList());

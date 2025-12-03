@@ -100,11 +100,22 @@ public class AuthServiceImpl implements AuthService {
     
     @Override
     public void registerUser(RegisterRequest request) {
+        // 1. Check Validate cơ bản
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new BadRequestException("Email đã được sử dụng.");
         }
         if (userRepository.existsByHandle(request.getHandle())) {
             throw new BadRequestException("Handle @" + request.getHandle() + " đã tồn tại.");
+        }
+
+        // 2. Check Tuổi (Luật COPPA / An toàn mạng) - Yêu cầu > 13 tuổi
+        // Import java.time.Period và java.time.LocalDate nếu chưa có
+        if (request.getDateOfBirth() == null) {
+             throw new BadRequestException("Ngày sinh là bắt buộc.");
+        }
+        int age = java.time.Period.between(request.getDateOfBirth(), java.time.LocalDate.now()).getYears();
+        if (age < 13) {
+            throw new BadRequestException("Bạn phải trên 13 tuổi để sử dụng MindRevol.");
         }
 
         Role userRole = roleRepository.findByName("USER")
@@ -115,6 +126,7 @@ public class AuthServiceImpl implements AuthService {
                 .password(passwordEncoder.encode(request.getPassword()))
                 .fullname(request.getFullname())
                 .handle(request.getHandle())
+                .dateOfBirth(request.getDateOfBirth()) // Lưu ngày sinh vào DB
                 .status(UserStatus.PENDING_ACTIVATION)
                 .roles(new HashSet<>(Collections.singletonList(userRole)))
                 .authProvider("LOCAL") 

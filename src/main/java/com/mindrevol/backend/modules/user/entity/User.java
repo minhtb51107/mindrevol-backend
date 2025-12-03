@@ -8,6 +8,7 @@ import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.Where;
 
+import java.time.LocalDate; // <-- Nhớ import cái này
 import java.util.HashSet;
 import java.util.Set;
 
@@ -42,6 +43,11 @@ public class User extends BaseEntity {
 
     @Column(nullable = false, length = 100)
     private String fullname;
+    
+    // --- MỚI: Thêm ngày sinh ---
+    @Column(name = "date_of_birth")
+    private LocalDate dateOfBirth;
+    // --------------------------
 
     @Column(length = 500)
     private String avatarUrl;
@@ -76,8 +82,6 @@ public class User extends BaseEntity {
     @Builder.Default
     private Integer freezeStreakCount = 0;
 
-    // --- THÊM MỚI: OPTIMISTIC LOCKING ---
     @Version
     private Long version;
-    // ------------------------------------
 }

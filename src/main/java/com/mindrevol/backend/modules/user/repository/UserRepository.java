@@ -2,7 +2,13 @@ package com.mindrevol.backend.modules.user.repository;
 
 import com.mindrevol.backend.modules.user.entity.User;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
+
+import java.time.OffsetDateTime; // Dùng OffsetDateTime cho khớp với BaseEntity
+import java.util.List;
 import java.util.Optional;
 
 @Repository
@@ -11,4 +17,14 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByHandle(String handle);
     boolean existsByEmail(String email);
     boolean existsByHandle(String handle);
+
+    // --- MỚI: TÌM USER ĐÃ XÓA MỀM QUÁ 30 NGÀY ---
+    // Phải dùng nativeQuery vì Hibernate @Where sẽ tự động lọc bỏ user đã xóa
+    @Query(value = "SELECT * FROM users WHERE deleted_at < :cutoffDate", nativeQuery = true)
+    List<User> findUsersReadyForHardDelete(@Param("cutoffDate") OffsetDateTime cutoffDate);
+
+    // --- MỚI: XÓA VĨNH VIỄN (HARD DELETE) ---
+    @Modifying
+    @Query(value = "DELETE FROM users WHERE id = :userId", nativeQuery = true)
+    void hardDeleteUser(@Param("userId") Long userId);
 }

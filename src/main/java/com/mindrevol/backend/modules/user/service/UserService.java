@@ -1,6 +1,7 @@
 package com.mindrevol.backend.modules.user.service;
 
 import com.mindrevol.backend.modules.user.dto.request.UpdateProfileRequest;
+import com.mindrevol.backend.modules.user.dto.response.UserDataExport; // <-- Import mới
 import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
 import com.mindrevol.backend.modules.user.entity.User;
 
@@ -16,6 +17,8 @@ public interface UserService {
     
     User getUserById(Long id);
     
-    // --- THÊM HÀM NÀY ---
     void deleteMyAccount(Long userId);
+
+    // --- MỚI: Tải dữ liệu cá nhân ---
+    UserDataExport exportMyData(Long userId);
 }
