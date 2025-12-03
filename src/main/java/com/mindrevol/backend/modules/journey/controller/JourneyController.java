@@ -24,6 +24,7 @@ import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyWidgetResponse;
 import com.mindrevol.backend.modules.journey.dto.response.RoadmapStatusResponse;
 import com.mindrevol.backend.modules.journey.service.JourneyService;
+import com.mindrevol.backend.modules.journey.service.impl.JourneyServiceImpl;
 import com.mindrevol.backend.modules.user.entity.User;
 
 import jakarta.validation.Valid;
@@ -101,5 +102,27 @@ public class JourneyController {
         
         // Cache đã được xử lý ở tầng Service, Controller chỉ việc gọi
         return ApiResponse.success(journeyService.getWidgetInfo(id, currentUserId), "Lấy thông tin Widget thành công");
+    }
+    
+    @PostMapping("/requests/{requestId}/approve")
+    public ResponseEntity<ApiResponse<Void>> approveRequest(
+            @PathVariable UUID requestId,
+            @AuthenticationPrincipal User currentUser) {
+        
+        // Lưu ý: Cần cast service về Implementation hoặc thêm method vào Interface
+        // Tốt nhất là thêm method vào Interface JourneyService trước
+        ((JourneyServiceImpl) journeyService).approveJoinRequest(requestId, currentUser);
+        
+        return ResponseEntity.ok(ApiResponse.success(null, "Đã duyệt thành viên"));
+    }
+
+    @PostMapping("/requests/{requestId}/reject")
+    public ResponseEntity<ApiResponse<Void>> rejectRequest(
+            @PathVariable UUID requestId,
+            @AuthenticationPrincipal User currentUser) {
+        
+        ((JourneyServiceImpl) journeyService).rejectJoinRequest(requestId, currentUser);
+        
+        return ResponseEntity.ok(ApiResponse.success(null, "Đã từ chối yêu cầu"));
     }
 }

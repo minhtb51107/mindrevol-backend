@@ -1,11 +1,10 @@
 package com.mindrevol.backend.modules.gamification.service.impl;
 
 import com.mindrevol.backend.common.exception.BadRequestException;
-import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
 import com.mindrevol.backend.modules.gamification.dto.response.BadgeResponse;
-import com.mindrevol.backend.modules.gamification.dto.response.PointHistoryResponse; 
+import com.mindrevol.backend.modules.gamification.dto.response.PointHistoryResponse;
 import com.mindrevol.backend.modules.gamification.entity.*;
 import com.mindrevol.backend.modules.gamification.mapper.GamificationMapper;
 import com.mindrevol.backend.modules.gamification.repository.BadgeRepository;
@@ -14,14 +13,14 @@ import com.mindrevol.backend.modules.gamification.repository.UserBadgeRepository
 import com.mindrevol.backend.modules.gamification.service.GamificationService;
 import com.mindrevol.backend.modules.journey.entity.JourneyParticipant;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
-import com.mindrevol.backend.modules.notification.entity.NotificationType; 
-import com.mindrevol.backend.modules.notification.service.NotificationService; 
+import com.mindrevol.backend.modules.notification.entity.NotificationType;
+import com.mindrevol.backend.modules.notification.service.NotificationService;
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.cache.annotation.CacheEvict; // <--- IMPORT
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,7 +37,6 @@ import java.util.stream.Collectors;
 @Slf4j
 public class GamificationServiceImpl implements GamificationService {
 
-    // ... [Các trường inject giữ nguyên] ...
     private final JourneyParticipantRepository participantRepository;
     private final BadgeRepository badgeRepository;
     private final UserBadgeRepository userBadgeRepository;
@@ -56,52 +54,30 @@ public class GamificationServiceImpl implements GamificationService {
     @Value("${app.gamification.points.checkin-comeback}")
     private int pointsPerComeback;
 
-    // ... [Hàm processCheckinGamification giữ nguyên, không cần CacheEvict ở đây vì bên CheckinService đã làm rồi] ...
     @Override
     @Async("taskExecutor")
     @Transactional
     public void processCheckinGamification(Checkin checkin) {
         log.info("Processing gamification for checkin {}", checkin.getId());
 
+        // 1. Lấy thông tin (chỉ đọc để check điều kiện Badge)
         JourneyParticipant participant = participantRepository
                 .findByJourneyIdAndUserId(checkin.getJourney().getId(), checkin.getUser().getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Participant not found"));
-
-        LocalDate today = LocalDate.now();
-        LocalDate lastCheckin = participant.getLastCheckinAt();
+                .orElse(null);
         
-        int currentStreak = participant.getCurrentStreak();
-        boolean isFirstCheckinToday = false;
+        if (participant == null) return;
 
-        if (lastCheckin != null) {
-            if (lastCheckin.isEqual(today)) {
-                log.info("User already checked in today.");
-            } else {
-                isFirstCheckinToday = true;
-                if (lastCheckin.isEqual(today.minusDays(1))) {
-                    currentStreak++;
-                } else {
-                    currentStreak = 1; 
-                }
-                participant.setCurrentStreak(currentStreak);
-                participant.setLastCheckinAt(today);
-                participantRepository.save(participant);
-            }
-        } else {
-            isFirstCheckinToday = true;
-            currentStreak = 1;
-            participant.setCurrentStreak(currentStreak);
-            participant.setLastCheckinAt(today);
-            participantRepository.save(participant);
-        }
+        // LƯU Ý: Không update currentStreak ở đây nữa vì CheckinService đã làm rồi để đảm bảo Transaction
 
-        if (isFirstCheckinToday && (checkin.getStatus() == CheckinStatus.NORMAL || checkin.getStatus() == CheckinStatus.COMEBACK)) {
-            long pointsEarned = (checkin.getStatus() == CheckinStatus.COMEBACK) ? pointsPerComeback : pointsPerCheckin; 
+        // 2. Cộng điểm
+        if (checkin.getStatus() == CheckinStatus.NORMAL || checkin.getStatus() == CheckinStatus.COMEBACK) {
+            long pointsEarned = (checkin.getStatus() == CheckinStatus.COMEBACK) ? pointsPerComeback : pointsPerCheckin;
             awardPoints(checkin.getUser(), (int) pointsEarned, "Check-in: " + checkin.getJourney().getName());
         }
 
+        // 3. Trao huy hiệu (Dựa trên streak đã được update bên CheckinService)
         if (checkin.getStatus() != CheckinStatus.REST) {
-            checkAndAwardBadges(checkin, currentStreak);
+            checkAndAwardBadges(checkin, participant.getCurrentStreak());
         }
     }
 
@@ -187,24 +163,21 @@ public class GamificationServiceImpl implements GamificationService {
     
     @Override
     @Transactional
-    // --- THÊM DÒNG NÀY: Xóa cache khi reset streak ---
     @CacheEvict(value = "journey_widget", key = "#journeyId + '-' + #userId")
-    // -----------------------------------------------
     public void refreshUserStreak(UUID journeyId, Long userId) {
+        // Giữ lại để tương thích nhưng thực tế Job đã lo phần này
         JourneyParticipant participant = participantRepository
                 .findByJourneyIdAndUserId(journeyId, userId)
                 .orElse(null);
 
         if (participant == null || participant.getLastCheckinAt() == null) return;
 
-        LocalDate today = LocalDate.now();
+        LocalDate today = LocalDate.now(); 
         LocalDate lastCheckin = participant.getLastCheckinAt();
 
         if (lastCheckin.isBefore(today.minusDays(1))) {
             if (participant.getCurrentStreak() > 0) {
-                log.info("Lazy Reset Streak for User {} in Journey {}", userId, journeyId);
-                participant.setCurrentStreak(0);
-                participantRepository.save(participant);
+                log.info("Lazy Reset Streak check for User {} in Journey {}", userId, journeyId);
             }
         }
     }

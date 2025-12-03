@@ -2,6 +2,7 @@ package com.mindrevol.backend.modules.checkin.controller;
 
 import java.util.UUID;
 
+import com.mindrevol.backend.modules.feed.service.FeedService; // <--- IMPORT MỚI
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -25,10 +26,10 @@ import com.mindrevol.backend.modules.checkin.service.CheckinService;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
 import com.mindrevol.backend.modules.user.entity.User;
 
-import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse; // Import mới
-import java.util.Map; // Import mới
-import java.time.LocalDateTime; // Import LocalDateTime
-import java.util.List; // Import List
+import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse; 
+import java.util.Map; 
+import java.time.LocalDateTime; 
+import java.util.List; 
 import org.springframework.web.bind.annotation.RequestParam;
 
 import jakarta.validation.Valid;
@@ -41,6 +42,7 @@ public class CheckinController {
 
     private final CheckinService checkinService;
     private final ReactionService reactionService;
+    private final FeedService feedService; // <--- INJECT FEED SERVICE
 
     // API Post bài (Upload ảnh)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
@@ -80,7 +82,6 @@ public class CheckinController {
         
         String content = body.get("content");
         if (content == null || content.isBlank()) {
-            // Có thể throw Exception hoặc trả lỗi tay
             throw new com.mindrevol.backend.common.exception.BadRequestException("Nội dung không được để trống");
         }
         
@@ -97,20 +98,19 @@ public class CheckinController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
     
- // 1. Lấy Feed Tổng Hợp (Home Feed)
-    // Client gọi: GET /api/v1/checkins/feed?limit=10 (lần đầu)
-    // Client gọi: GET /api/v1/checkins/feed?limit=10&cursor=2023-10-25T10:00:00 (load thêm)
+    // --- 1. Lấy Feed Tổng Hợp (Home Feed) - SỬ DỤNG REDIS FEED ---
     @GetMapping("/feed")
     public ResponseEntity<ApiResponse<List<CheckinResponse>>> getHomeFeed(
-            @RequestParam(required = false) LocalDateTime cursor, 
+            @RequestParam(defaultValue = "0") int page, // Đổi cursor thành page cho Redis List
             @RequestParam(defaultValue = "10") int limit,
             @AuthenticationPrincipal User currentUser) {
         
-        List<CheckinResponse> feed = checkinService.getUnifiedFeed(currentUser, cursor, limit);
+        // Gọi qua FeedService (Redis) thay vì CheckinService (DB)
+        List<CheckinResponse> feed = feedService.getFeed(currentUser.getId(), page, limit);
         return ResponseEntity.ok(ApiResponse.success(feed));
     }
 
-    // 2. Lấy Feed Journey (Dạng Cursor - Tối ưu hơn dạng Page cũ)
+    // 2. Lấy Feed Journey (Vẫn dùng DB Cursor vì Feed này ít khi scale lớn)
     @GetMapping("/journey/{journeyId}/cursor")
     public ResponseEntity<ApiResponse<List<CheckinResponse>>> getJourneyFeedCursor(
             @PathVariable UUID journeyId,

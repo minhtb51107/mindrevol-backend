@@ -20,4 +20,6 @@ public interface JourneyService {
     void kickMember(UUID journeyId, Long memberId, User currentUser);
     List<RoadmapStatusResponse> getJourneyRoadmap(UUID journeyId, Long currentUserId);
     JourneyWidgetResponse getWidgetInfo(UUID journeyId, Long userId);
+    void approveJoinRequest(UUID requestId, User admin);
+    void rejectJoinRequest(UUID requestId, User admin);
 }

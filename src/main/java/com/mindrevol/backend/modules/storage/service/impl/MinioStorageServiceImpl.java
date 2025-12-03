@@ -28,7 +28,6 @@ public class MinioStorageServiceImpl implements FileStorageService {
     @Override
     public String uploadFile(MultipartFile file) {
         try {
-            // Tạo tên file duy nhất: uuid_filename
             String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
             return uploadToMinio(file.getInputStream(), fileName, file.getContentType(), file.getSize());
         } catch (Exception e) {
@@ -45,12 +44,10 @@ public class MinioStorageServiceImpl implements FileStorageService {
         try {
             String bucketName = minioConfig.getBucketName();
             
-            // 1. Đảm bảo bucket tồn tại (Có thể cache check này để tối ưu hơn nữa)
             if (!minioClient.bucketExists(BucketExistsArgs.builder().bucket(bucketName).build())) {
                 minioClient.makeBucket(MakeBucketArgs.builder().bucket(bucketName).build());
             }
 
-            // 2. Upload lên MinIO
             minioClient.putObject(
                     PutObjectArgs.builder()
                             .bucket(bucketName)
@@ -59,8 +56,14 @@ public class MinioStorageServiceImpl implements FileStorageService {
                             .contentType(contentType)
                             .build());
 
-            // 3. Trả về URL public
-            return String.format("%s/%s/%s", minioConfig.getUrl(), bucketName, fileName);
+            // --- LOGIC CDN ---
+            String baseUrl = minioConfig.getUrl();
+            if (minioConfig.getCdnUrl() != null && !minioConfig.getCdnUrl().isEmpty()) {
+                baseUrl = minioConfig.getCdnUrl();
+            }
+            
+            return String.format("%s/%s/%s", baseUrl, bucketName, fileName);
+            // -----------------
 
         } catch (Exception e) {
             log.error("Error uploading file to MinIO", e);
@@ -72,6 +75,7 @@ public class MinioStorageServiceImpl implements FileStorageService {
     public InputStream downloadFile(String fileUrl) {
         try {
             String bucketName = minioConfig.getBucketName();
+            // Cắt lấy tên file từ URL (dù là URL thường hay CDN)
             String objectName = fileUrl.substring(fileUrl.lastIndexOf("/") + 1);
 
             return minioClient.getObject(

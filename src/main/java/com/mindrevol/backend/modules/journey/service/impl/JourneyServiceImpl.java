@@ -6,26 +6,29 @@ import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
 import com.mindrevol.backend.modules.gamification.service.GamificationService;
-// import com.mindrevol.backend.modules.habit.service.HabitService; // <-- XÓA DÒNG NÀY
 import com.mindrevol.backend.modules.journey.dto.request.*;
 import com.mindrevol.backend.modules.journey.dto.response.*;
 import com.mindrevol.backend.modules.journey.entity.*;
-import com.mindrevol.backend.modules.journey.event.JourneyCreatedEvent; // <-- IMPORT MỚI
-import com.mindrevol.backend.modules.journey.event.JourneyJoinedEvent;   // <-- IMPORT MỚI
+import com.mindrevol.backend.modules.journey.event.JourneyCreatedEvent;
+import com.mindrevol.backend.modules.journey.event.JourneyJoinedEvent;
 import com.mindrevol.backend.modules.journey.mapper.JourneyMapper;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
 import com.mindrevol.backend.modules.journey.service.JourneyService;
 import com.mindrevol.backend.modules.user.entity.User;
+import com.mindrevol.backend.modules.journey.repository.JourneyRequestRepository;
+import com.mindrevol.backend.modules.journey.entity.JourneyRequest;
+import com.mindrevol.backend.modules.journey.entity.RequestStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.cache.annotation.Cacheable;
-import org.springframework.context.ApplicationEventPublisher; // <-- IMPORT MỚI
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -39,20 +42,17 @@ public class JourneyServiceImpl implements JourneyService {
 
     private final JourneyRepository journeyRepository;
     private final JourneyParticipantRepository participantRepository;
-    // private final HabitService habitService; // <-- XÓA DEPENDENCY NÀY
     private final GamificationService gamificationService;
     private final JourneyMapper journeyMapper;
     private final CheckinRepository checkinRepository;
-    
-    private final ApplicationEventPublisher eventPublisher; // <-- INJECT CÁI NÀY
+    private final ApplicationEventPublisher eventPublisher;
+    private final JourneyRequestRepository journeyRequestRepository;
 
     @Override
     @Transactional
     public JourneyResponse createJourney(CreateJourneyRequest request, User currentUser) {
-        
         String inviteCode = generateUniqueInviteCode();
 
-        // --- Logic Config (Giữ nguyên) ---
         boolean hasStreak = true;
         boolean reqTicket = true;
         boolean isHardcore = true;
@@ -61,7 +61,7 @@ public class JourneyServiceImpl implements JourneyService {
             hasStreak = false;
             reqTicket = false;
             isHardcore = false;
-        } 
+        }
 
         Journey journey = Journey.builder()
                 .name(request.getName())
@@ -90,18 +90,16 @@ public class JourneyServiceImpl implements JourneyService {
                             .description(t.getDescription())
                             .build())
                     .collect(Collectors.toList());
-            journey.setRoadmap(tasks); 
+            journey.setRoadmap(tasks);
         }
 
         Journey savedJourney = journeyRepository.save(journey);
 
-        // --- THAY ĐỔI Ở ĐÂY: Thay vì gọi habitService, ta bắn Event ---
-        // habitService.createHabitFromJourney(...) -> XÓA
+        // Bắn Event
         eventPublisher.publishEvent(new JourneyCreatedEvent(savedJourney, currentUser));
-        // -------------------------------------------------------------
 
         JourneyParticipant participant = JourneyParticipant.builder()
-                .journey(savedJourney) 
+                .journey(savedJourney)
                 .user(currentUser)
                 .role(JourneyRole.ADMIN)
                 .currentStreak(0)
@@ -109,11 +107,11 @@ public class JourneyServiceImpl implements JourneyService {
 
         participantRepository.save(participant);
 
-        return journeyMapper.toResponse(savedJourney); 
+        return journeyMapper.toResponse(savedJourney);
     }
-    
-    // ... [Giữ nguyên hàm getJourneyRoadmap] ...
+
     @Override
+    @Transactional(readOnly = true)
     public List<RoadmapStatusResponse> getJourneyRoadmap(UUID journeyId, Long currentUserId) {
         Journey journey = journeyRepository.findById(journeyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
@@ -142,6 +140,32 @@ public class JourneyServiceImpl implements JourneyService {
             throw new BadRequestException("Bạn đã tham gia hành trình này rồi");
         }
 
+        // --- LOGIC MỚI: Check Approval ---
+        if (journey.isRequireApproval()) {
+            // Kiểm tra xem đã gửi request chưa
+            Optional<JourneyRequest> existingReq = journeyRequestRepository.findByJourneyIdAndUserId(journey.getId(), currentUser.getId());
+            if (existingReq.isPresent()) {
+                if (existingReq.get().getStatus() == RequestStatus.PENDING) {
+                    throw new BadRequestException("Yêu cầu tham gia của bạn đang chờ duyệt.");
+                } else if (existingReq.get().getStatus() == RequestStatus.REJECTED) {
+                    throw new BadRequestException("Yêu cầu tham gia của bạn đã bị từ chối.");
+                }
+            }
+
+            // Tạo Request mới
+            JourneyRequest newReq = JourneyRequest.builder()
+                    .journey(journey)
+                    .user(currentUser)
+                    .status(RequestStatus.PENDING)
+                    .build();
+            journeyRequestRepository.save(newReq);
+
+            // Trả về response nhưng có flag đặc biệt để Frontend biết là đang Pending
+            // Tạm thời ta vẫn trả về JourneyResponse, nhưng isJoined = false
+            return journeyMapper.toResponse(journey); 
+        }
+        // --------------------------------
+
         JourneyParticipant participant = JourneyParticipant.builder()
                 .journey(journey)
                 .user(currentUser)
@@ -149,24 +173,68 @@ public class JourneyServiceImpl implements JourneyService {
                 .currentStreak(0)
                 .build();
         participantRepository.save(participant);
-        
-        // --- THAY ĐỔI Ở ĐÂY: Bắn Event khi join ---
-        // habitService.createHabitFromJourney(...) -> XÓA
+
         eventPublisher.publishEvent(new JourneyJoinedEvent(journey, currentUser));
-        // -----------------------------------------
 
         return journeyMapper.toResponse(journey);
     }
 
-    // ... [Các hàm getMyJourneys, leaveJourney, updateJourneySettings, kickMember, getWidgetInfo, generateUniqueInviteCode giữ nguyên] ...
-    // Để tiết kiệm không gian, tôi không paste lại toàn bộ code cũ nếu không đổi logic.
-    // Bạn hãy giữ nguyên các phần còn lại của file này.
-    
+    // --- THÊM HÀM MỚI: DUYỆT THÀNH VIÊN ---
+    @Transactional
+    public void approveJoinRequest(UUID requestId, User admin) {
+        JourneyRequest req = journeyRequestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Yêu cầu không tồn tại"));
+        
+        // Check quyền Admin
+        JourneyParticipant adminPart = participantRepository.findByJourneyIdAndUserId(req.getJourney().getId(), admin.getId())
+                .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
+        if (adminPart.getRole() != JourneyRole.ADMIN) {
+            throw new BadRequestException("Chỉ quản trị viên mới được duyệt thành viên");
+        }
+
+        if (req.getStatus() != RequestStatus.PENDING) {
+            throw new BadRequestException("Yêu cầu này đã được xử lý");
+        }
+
+        // Chấp nhận: Thêm vào nhóm
+        JourneyParticipant participant = JourneyParticipant.builder()
+                .journey(req.getJourney())
+                .user(req.getUser())
+                .role(JourneyRole.MEMBER)
+                .currentStreak(0)
+                .build();
+        participantRepository.save(participant);
+
+        // Update Request status
+        req.setStatus(RequestStatus.APPROVED);
+        journeyRequestRepository.save(req);
+
+        // Bắn Event Join (để tạo Habit...)
+        eventPublisher.publishEvent(new JourneyJoinedEvent(req.getJourney(), req.getUser()));
+    }
+
+    @Transactional
+    public void rejectJoinRequest(UUID requestId, User admin) {
+        JourneyRequest req = journeyRequestRepository.findById(requestId)
+                .orElseThrow(() -> new ResourceNotFoundException("Yêu cầu không tồn tại"));
+
+        JourneyParticipant adminPart = participantRepository.findByJourneyIdAndUserId(req.getJourney().getId(), admin.getId())
+                .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
+        if (adminPart.getRole() != JourneyRole.ADMIN) {
+            throw new BadRequestException("Chỉ quản trị viên mới được duyệt thành viên");
+        }
+
+        req.setStatus(RequestStatus.REJECTED);
+        journeyRequestRepository.save(req);
+    }
+
     @Override
+    @Transactional(readOnly = true)
     public List<JourneyResponse> getMyJourneys(User currentUser) {
         List<JourneyParticipant> participants = participantRepository.findAllByUserId(currentUser.getId());
         return participants.stream()
                 .map(p -> {
+                    // Lazy reset streak nếu cần thiết (phòng trường hợp Job chưa chạy)
                     if (p.getJourney().isHasStreak()) {
                         gamificationService.refreshUserStreak(p.getJourney().getId(), currentUser.getId());
                     }
@@ -193,7 +261,7 @@ public class JourneyServiceImpl implements JourneyService {
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
         JourneyParticipant adminPart = participantRepository.findByJourneyIdAndUserId(journeyId, currentUser.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
-        
+
         if (adminPart.getRole() != JourneyRole.ADMIN) {
             throw new BadRequestException("Chỉ Quản trị viên mới được thay đổi cài đặt");
         }
@@ -236,7 +304,7 @@ public class JourneyServiceImpl implements JourneyService {
 
     @Override
     @Transactional(readOnly = true)
-    @Cacheable(value = "journey_widget", key = "#journeyId + '-' + #userId") 
+    @Cacheable(value = "journey_widget", key = "#journeyId + '-' + #userId")
     public JourneyWidgetResponse getWidgetInfo(UUID journeyId, Long userId) {
         log.info("Fetching Widget Info from Database for User {} Journey {}", userId, journeyId);
 
@@ -247,14 +315,22 @@ public class JourneyServiceImpl implements JourneyService {
 
         boolean isCompletedToday = false;
         String thumbnailUrl = null;
-        WidgetStatus widgetStatus = WidgetStatus.PENDING;
-        String label = "Hãy check-in ngay!";
+        WidgetStatus widgetStatus;
+        String label;
+
+        // Sử dụng Timezone của User nếu có để tính Widget chính xác
+        String tz = participant.getUser().getTimezone() != null ? participant.getUser().getTimezone() : "UTC";
+        ZoneId userZone = ZoneId.of(tz);
+        LocalDate todayLocal = LocalDate.now(userZone);
 
         if (lastCheckinOpt.isPresent()) {
             Checkin lastCheckin = lastCheckinOpt.get();
             thumbnailUrl = lastCheckin.getThumbnailUrl();
             
-            if (lastCheckin.getCreatedAt().toLocalDate().isEqual(LocalDate.now())) {
+            // Check ngày theo Timezone User
+            LocalDate checkinDateLocal = lastCheckin.getCreatedAt().atZone(ZoneId.of("UTC")).withZoneSameInstant(userZone).toLocalDate();
+
+            if (checkinDateLocal.isEqual(todayLocal)) {
                 isCompletedToday = true;
                 if (lastCheckin.getStatus() == CheckinStatus.REST) {
                     widgetStatus = WidgetStatus.REST;
@@ -270,11 +346,15 @@ public class JourneyServiceImpl implements JourneyService {
                     label = "Tuyệt vời! ✅";
                 }
             } else {
+                // Hôm nay chưa làm
                 if (participant.getJourney().isHasStreak()) {
-                    if (participant.getCurrentStreak() == 0 && participant.getJoinedAt().toLocalDate().isBefore(LocalDate.now())) {
-                        widgetStatus = WidgetStatus.FAILED_STREAK;
-                        label = "Bạn đã mất chuỗi 😭";
+                    // Logic check streak gãy
+                    // Nếu lastCheckin < today - 1 (tức là cách đây 2 ngày trở lên) => Gãy
+                    if (checkinDateLocal.isBefore(todayLocal.minusDays(1))) {
+                         widgetStatus = WidgetStatus.FAILED_STREAK;
+                         label = "Bạn đã mất chuỗi 😭";
                     } else {
+                        // Vẫn còn cơ hội (checkin hôm qua rồi, nay chưa)
                         widgetStatus = WidgetStatus.PENDING;
                         label = "Sẵn sàng chưa? 📸";
                     }

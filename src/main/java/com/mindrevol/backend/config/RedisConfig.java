@@ -13,9 +13,11 @@ import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 
 import java.time.Duration;
+import java.util.HashMap;
+import java.util.Map;
 
 @Configuration
-@EnableCaching // <-- KÍCH HOẠT CACHING
+@EnableCaching
 public class RedisConfig {
 
     @Bean
@@ -34,17 +36,27 @@ public class RedisConfig {
         return template;
     }
 
-    // --- THÊM BEAN NÀY ĐỂ QUẢN LÝ CACHE ---
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
-        RedisCacheConfiguration cacheConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(10)) // Cache tồn tại 10 phút (TTL)
+        // Cấu hình mặc định (10 phút)
+        RedisCacheConfiguration defaultCacheConfig = RedisCacheConfiguration.defaultCacheConfig()
+                .entryTtl(Duration.ofMinutes(10))
                 .disableCachingNullValues()
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
                 .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
 
+        // Cấu hình riêng cho từng loại Cache
+        Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
+        
+        // Widget cần refresh khá nhanh (5 phút) để cập nhật streak/status
+        cacheConfigurations.put("journey_widget", defaultCacheConfig.entryTtl(Duration.ofMinutes(5)));
+        
+        // Profile user ít thay đổi hơn (30 phút)
+        cacheConfigurations.put("user_profile", defaultCacheConfig.entryTtl(Duration.ofMinutes(30)));
+
         return RedisCacheManager.builder(redisConnectionFactory)
-                .cacheDefaults(cacheConfig)
+                .cacheDefaults(defaultCacheConfig)
+                .withInitialCacheConfigurations(cacheConfigurations)
                 .build();
     }
 }

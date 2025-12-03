@@ -54,6 +54,11 @@ public class Checkin {
     @Column(columnDefinition = "TEXT")
     private String caption;
 
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false)
+    @Builder.Default
+    private CheckinVisibility visibility = CheckinVisibility.PUBLIC;
+
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;

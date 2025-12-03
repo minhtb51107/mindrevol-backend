@@ -79,6 +79,17 @@ public class UserServiceImpl implements UserService {
                 throw new BadRequestException("Handle @" + request.getHandle() + " đã được sử dụng.");
             }
         }
+        
+        if (request.getTimezone() != null && !request.getTimezone().isEmpty()) {
+            try {
+                // Validate timezone hợp lệ
+                java.time.ZoneId.of(request.getTimezone());
+                user.setTimezone(request.getTimezone());
+            } catch (Exception e) {
+                log.warn("Invalid timezone sent by user {}: {}", user.getId(), request.getTimezone());
+                // Có thể bỏ qua hoặc set về UTC tùy ý
+            }
+        }
 
         userMapper.updateUserFromRequest(request, user);
         User updatedUser = userRepository.save(user);

@@ -6,6 +6,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -16,7 +17,7 @@ import com.mindrevol.backend.modules.habit.dto.response.HabitResponse;
 import com.mindrevol.backend.modules.habit.entity.Habit;
 import com.mindrevol.backend.modules.habit.entity.HabitLog;
 import com.mindrevol.backend.modules.habit.entity.HabitLogStatus;
-import com.mindrevol.backend.modules.habit.mapper.HabitMapper; // Import Mapper
+import com.mindrevol.backend.modules.habit.mapper.HabitMapper;
 import com.mindrevol.backend.modules.habit.repository.HabitLogRepository;
 import com.mindrevol.backend.modules.habit.repository.HabitRepository;
 import com.mindrevol.backend.modules.habit.service.HabitService;
@@ -32,7 +33,8 @@ public class HabitServiceImpl implements HabitService {
 
     private final HabitRepository habitRepository;
     private final HabitLogRepository habitLogRepository;
-    private final HabitMapper habitMapper; // Inject Mapper
+    private final HabitMapper habitMapper;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
@@ -48,9 +50,8 @@ public class HabitServiceImpl implements HabitService {
         
         habit = habitRepository.save(habit);
         
-        // Dùng Mapper
         HabitResponse response = habitMapper.toResponse(habit);
-        response.setCompletedToday(false); // Mới tạo thì chưa hoàn thành
+        response.setCompletedToday(false);
         return response;
     }
 
@@ -65,7 +66,6 @@ public class HabitServiceImpl implements HabitService {
                     .map(log -> log.getStatus() == HabitLogStatus.COMPLETED)
                     .orElse(false);
             
-            // Dùng Mapper + Set logic động
             HabitResponse response = habitMapper.toResponse(habit);
             response.setCompletedToday(isCompleted);
             return response;
@@ -78,6 +78,14 @@ public class HabitServiceImpl implements HabitService {
     public void markHabitCompleted(UUID habitId, UUID checkinId, User user) {
         Habit habit = getHabitAndCheckOwner(habitId, user);
         saveHabitLog(habit, checkinId, HabitLogStatus.COMPLETED);
+
+        // --- LOGIC MỚI: Nếu Habit này liên kết với Journey ---
+        if (habit.getJourneyId() != null && checkinId == null) {
+            // checkinId == null nghĩa là user tick tay từ màn hình Habit
+            // Hiện tại chúng ta CHỈ GHI LOG, chưa tự động tạo check-in Journey
+            // để đảm bảo tính "Proof of Work" (cần ảnh thật).
+            log.info("Habit completed manually. Associated Journey ID: {}", habit.getJourneyId());
+        }
     }
 
     @Override

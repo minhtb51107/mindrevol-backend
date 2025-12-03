@@ -5,6 +5,7 @@ COPY . .
 # Skip test ở bước này vì CI đã chạy test rồi, giúp build nhanh hơn
 RUN ./gradlew clean build -x test --no-daemon
 
+RUN apt-get update && apt-get install -y ffmpeg
 # Stage 2: Run
 FROM openjdk:21-jdk-slim
 WORKDIR /app

@@ -69,6 +69,10 @@ public class Journey {
     @Builder.Default
     private boolean isHardcore = true; 
     
+    @Column(name = "require_approval", nullable = false)
+    @Builder.Default
+    private boolean requireApproval = false;
+    
     // --- THÊM PHẦN NÀY VÀO ---
     @Enumerated(EnumType.STRING)
     @Column(name = "interaction_type", nullable = false)

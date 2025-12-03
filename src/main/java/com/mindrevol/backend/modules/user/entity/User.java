@@ -64,6 +64,10 @@ public class User extends BaseEntity {
     
     @Column(name = "fcm_token")
     private String fcmToken;
+    
+    @Column(nullable = false, length = 50)
+    @Builder.Default
+    private String timezone = "UTC"; // Mặc định là UTC
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(

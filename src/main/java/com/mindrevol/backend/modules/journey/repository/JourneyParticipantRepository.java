@@ -24,6 +24,8 @@ public interface JourneyParticipantRepository extends JpaRepository<JourneyParti
     
     Optional<JourneyParticipant> findByJourneyIdAndUserId(UUID journeyId, Long userId);
     
+    Slice<JourneyParticipant> findByCurrentStreakGreaterThan(Integer minStreak, Pageable pageable);
+    
     @Modifying
     // --- SỬA LOGIC: Thêm điều kiện lọc deleted_at cho native query ---
     @Query(value = """
