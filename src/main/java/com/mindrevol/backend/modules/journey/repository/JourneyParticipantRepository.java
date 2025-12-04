@@ -15,39 +15,38 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, UUID> {
-    
+public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, UUID> { // Lưu ý: ID của bảng này là UUID hay Long? Nếu entity khai báo @Id UUID id thì để UUID, nếu Long id thì để Long. Ở đây tôi giữ UUID theo code gốc của bạn.
+
+    // 1. Tìm kiếm cơ bản
     @Query("SELECT jp FROM JourneyParticipant jp JOIN FETCH jp.journey WHERE jp.user.id = :userId")
     List<JourneyParticipant> findAllByUserId(Long userId);
 
+    List<JourneyParticipant> findAllByJourneyId(UUID journeyId);
+
+    // 2. Check tồn tại (Dùng UUID cho JourneyId, Long cho UserId)
     boolean existsByJourneyIdAndUserId(UUID journeyId, Long userId);
     
     Optional<JourneyParticipant> findByJourneyIdAndUserId(UUID journeyId, Long userId);
     
+    // 3. Logic Gamification & Job
     Slice<JourneyParticipant> findByCurrentStreakGreaterThan(Integer minStreak, Pageable pageable);
     
     @Modifying
-    // --- SỬA LOGIC: Thêm điều kiện lọc deleted_at cho native query ---
     @Query(value = """
         UPDATE journey_participants 
         SET current_streak = 0 
         WHERE current_streak > 0 
-        AND deleted_at IS NULL  -- <--- QUAN TRỌNG
+        AND deleted_at IS NULL 
         AND id NOT IN (
             SELECT p.id 
             FROM journey_participants p
             JOIN checkins c ON c.journey_id = p.journey_id AND c.user_id = p.user_id
             WHERE c.created_at >= CURRENT_DATE - INTERVAL '1 DAY'
-            AND c.deleted_at IS NULL -- <--- QUAN TRỌNG: Checkin cũng phải chưa xóa
+            AND c.deleted_at IS NULL
         )
     """, nativeQuery = true)
     void resetStreakForInactiveUsers();
-    // ----------------------------------------------------------------
 
-	List<JourneyParticipant> findAllByJourneyId(UUID id);
-	
-    // Các JPQL Query bên dưới không cần sửa vì Entity đã có @Where(clause = "deleted_at IS NULL")
-    // Hibernate sẽ tự động thêm điều kiện vào JPQL.
     @Query("SELECT jp FROM JourneyParticipant jp " +
            "JOIN FETCH jp.journey j " +
            "JOIN FETCH jp.user u " +

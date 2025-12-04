@@ -80,7 +80,6 @@ public class CheckinServiceImpl implements CheckinService {
         try {
             userZone = ZoneId.of(tz);
         } catch (Exception e) {
-            log.warn("Invalid timezone '{}' for user {}, fallback to UTC", tz, currentUser.getId());
             userZone = ZoneId.of("UTC");
         }
         LocalDate todayLocal = LocalDate.now(userZone);
@@ -121,18 +120,6 @@ public class CheckinServiceImpl implements CheckinService {
                 if (checkinRepository.existsByUserIdAndTaskId(currentUser.getId(), task.getId())) {
                     throw new BadRequestException("Bạn đã hoàn thành nhiệm vụ này rồi!");
                 }
-
-                // --- STRICT ROADMAP: Bắt buộc làm tuần tự ---
-                if (task.getDayNo() > 1) {
-                    Optional<JourneyTask> prevTask = journeyTaskRepository.findByJourneyIdAndDayNo(journey.getId(), task.getDayNo() - 1);
-                    if (prevTask.isPresent()) {
-                        boolean isPrevDone = checkinRepository.existsByUserIdAndTaskId(currentUser.getId(), prevTask.get().getId());
-                        if (!isPrevDone) {
-                            throw new BadRequestException("Bạn phải hoàn thành nhiệm vụ Ngày " + (task.getDayNo() - 1) + " trước!");
-                        }
-                    }
-                }
-                // -------------------------------------------
             }
         }
 
@@ -146,13 +133,12 @@ public class CheckinServiceImpl implements CheckinService {
                 }
                 currentUser.setFreezeStreakCount(currentUser.getFreezeStreakCount() - 1);
                 userRepository.save(currentUser);
-                log.info("Used Freeze Streak ticket for User {}", currentUser.getId());
-            } else {
-                log.info("Free REST status for User {} (No ticket required)", currentUser.getId());
             }
             finalStatus = CheckinStatus.REST;
         } else {
-            // Tính toán status dựa trên lịch sử
+            // --- SỬA ĐỔI QUAN TRỌNG: TRUST BUT VERIFY ---
+            // Luôn tính toán trạng thái tích cực (NORMAL/COMEBACK) ngay lập tức
+            // Bỏ qua logic set PENDING_VERIFICATION để tránh trải nghiệm bị khựng
             finalStatus = determineStatus(participant, todayLocal);
         }
 
@@ -161,20 +147,20 @@ public class CheckinServiceImpl implements CheckinService {
                 .journey(journey)
                 .task(task)
                 .imageUrl(imageUrl)
-                .thumbnailUrl(imageUrl) // Sẽ được job resize lại sau
+                .thumbnailUrl(imageUrl)
                 .emotion(request.getEmotion())
                 .status(finalStatus)
                 .caption(request.getCaption())
-                .visibility(request.getVisibility()) // <--- LƯU VISIBILITY TẠI ĐÂY
-                .createdAt(LocalDateTime.now()) // Thời điểm tạo lưu UTC
+                .visibility(request.getVisibility()) 
+                .createdAt(LocalDateTime.now()) 
                 .build();
 
         checkin = checkinRepository.save(checkin);
         
-        // Cập nhật streak ngay lập tức
+        // Cập nhật streak ngay lập tức (Vì mình tin user trước)
         updateParticipantStats(participant, finalStatus, todayLocal);
 
-        // Bắn event để FeedService xử lý Fan-out và GamificationService cộng điểm
+        // Bắn event để GamificationService cộng điểm ngay
         eventPublisher.publishEvent(new CheckinSuccessEvent(
                 checkin.getId(),
                 currentUser.getId(),
@@ -249,8 +235,6 @@ public class CheckinServiceImpl implements CheckinService {
                 .map(checkinMapper::toCommentResponse);
     }
 
-    // --- HÀM NÀY ĐÃ ĐƯỢC THAY THẾ BẰNG FEED SERVICE (REDIS) ---
-    // Nhưng vẫn giữ lại làm fallback nếu Redis chết
     @Override
     public List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit) {
         if (cursor == null) cursor = LocalDateTime.now();

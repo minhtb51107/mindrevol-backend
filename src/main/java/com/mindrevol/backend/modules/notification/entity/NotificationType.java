@@ -11,5 +11,6 @@ public enum NotificationType {
     STREAK_SAVED,       // Thông báo dùng vé đóng băng thành công
     REACTION,           // A đã thả tim check-in của bạn
     COMMENT,            // A đã bình luận
-    COMEBACK            // Bạn bè A đã quay trở lại (Comeback)
+    COMEBACK,           // Bạn bè A đã quay trở lại (Comeback)
+    NUDGE               // MỚI: Chọc ghẹo/Nhắc nhở bạn bè
 }

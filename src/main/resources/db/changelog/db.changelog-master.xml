@@ -44,5 +44,7 @@
     <include file="changes/029-add-timezone-to-users.xml" relativeToChangelogFile="true"/>
     <include file="changes/030-add-private-journey.xml" relativeToChangelogFile="true"/>
     <include file="changes/031-add-checkin-visibility.xml" relativeToChangelogFile="true"/>
-
+    
+    <include file="changes/032-add-journey-templates.xml" relativeToChangelogFile="true"/>
+    <include file="changes/033-add-verification.xml" relativeToChangelogFile="true"/>
 </databaseChangeLog>

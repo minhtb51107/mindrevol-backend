@@ -73,12 +73,25 @@ public class Journey {
     @Builder.Default
     private boolean requireApproval = false;
     
-    // --- THÊM PHẦN NÀY VÀO ---
     @Enumerated(EnumType.STRING)
     @Column(name = "interaction_type", nullable = false)
     @Builder.Default
     private InteractionType interactionType = InteractionType.GROUP_DISCUSS; 
-    // -------------------------
+
+    // --- MỚI: Template Fields ---
+    @Column(name = "is_template", nullable = false)
+    @Builder.Default
+    private boolean isTemplate = false;
+
+    @Column(name = "cloned_from_id")
+    private UUID clonedFromId;
+    // ---------------------------
+    
+ // --- MỚI: Cài đặt yêu cầu xác thực ảnh ---
+    @Column(name = "setting_req_verification", nullable = false)
+    @Builder.Default
+    private boolean requiresVerification = false; 
+    // ----------------------------------------
 
     @Column(name = "created_at", nullable = false, updatable = false)
     @CreatedDate
@@ -100,4 +113,23 @@ public class Journey {
     @OrderBy("dayNo ASC") 
     @Builder.Default
     private List<JourneyTask> roadmap = new ArrayList<>();
+
+    // Helper method để tạo bản sao (Fork)
+    public Journey copyForUser(User newCreator) {
+        return Journey.builder()
+                .name(this.name) 
+                .description(this.description)
+                .type(this.type)
+                .status(JourneyStatus.ACTIVE)
+                .theme(this.theme)
+                .hasStreak(this.hasStreak)
+                .requiresFreezeTicket(this.requiresFreezeTicket)
+                .isHardcore(this.isHardcore)
+                .interactionType(this.interactionType)
+                .requireApproval(false) // Clone về thì mặc định public, không cần duyệt
+                .creator(newCreator)
+                .clonedFromId(this.id) // Link tới bản gốc
+                .isTemplate(false) // Bản sao thì không phải template nữa
+                .build();
+    }
 }

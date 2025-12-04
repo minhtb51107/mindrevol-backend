@@ -8,7 +8,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PatchMapping; // Import Patch
+import org.springframework.web.bind.annotation.PatchMapping; 
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -19,7 +19,7 @@ import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.journey.dto.request.CreateJourneyRequest;
 import com.mindrevol.backend.modules.journey.dto.request.JoinJourneyRequest;
-import com.mindrevol.backend.modules.journey.dto.request.UpdateJourneySettingsRequest; // Import DTO mới
+import com.mindrevol.backend.modules.journey.dto.request.UpdateJourneySettingsRequest; 
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyWidgetResponse;
 import com.mindrevol.backend.modules.journey.dto.response.RoadmapStatusResponse;
@@ -61,9 +61,6 @@ public class JourneyController {
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách thành công"));
     }
 
-    // --- CÁC API MỚI ---
-
-    // 1. Rời khỏi hành trình (Tự rời)
     @DeleteMapping("/{journeyId}/leave")
     public ResponseEntity<ApiResponse<Void>> leaveJourney(
             @PathVariable UUID journeyId,
@@ -73,7 +70,6 @@ public class JourneyController {
         return ResponseEntity.ok(ApiResponse.success("Đã rời khỏi hành trình"));
     }
 
-    // 2. Cập nhật cài đặt hành trình (Dành cho Admin)
     @PatchMapping("/{journeyId}/settings")
     public ResponseEntity<ApiResponse<JourneyResponse>> updateSettings(
             @PathVariable UUID journeyId,
@@ -83,8 +79,6 @@ public class JourneyController {
         JourneyResponse response = journeyService.updateJourneySettings(journeyId, request, currentUser);
         return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật cài đặt thành công"));
     }
-
-    // -------------------
 
     @DeleteMapping("/{journeyId}/members/{memberId}")
     public ResponseEntity<ApiResponse<Void>> kickMember(
@@ -99,8 +93,6 @@ public class JourneyController {
     @GetMapping("/{id}/widget-info")
     public ApiResponse<JourneyWidgetResponse> getWidgetInfo(@PathVariable UUID id) {
         Long currentUserId = SecurityUtils.getCurrentUserId(); 
-        
-        // Cache đã được xử lý ở tầng Service, Controller chỉ việc gọi
         return ApiResponse.success(journeyService.getWidgetInfo(id, currentUserId), "Lấy thông tin Widget thành công");
     }
     
@@ -109,10 +101,7 @@ public class JourneyController {
             @PathVariable UUID requestId,
             @AuthenticationPrincipal User currentUser) {
         
-        // Lưu ý: Cần cast service về Implementation hoặc thêm method vào Interface
-        // Tốt nhất là thêm method vào Interface JourneyService trước
         ((JourneyServiceImpl) journeyService).approveJoinRequest(requestId, currentUser);
-        
         return ResponseEntity.ok(ApiResponse.success(null, "Đã duyệt thành viên"));
     }
 
@@ -122,7 +111,33 @@ public class JourneyController {
             @AuthenticationPrincipal User currentUser) {
         
         ((JourneyServiceImpl) journeyService).rejectJoinRequest(requestId, currentUser);
-        
         return ResponseEntity.ok(ApiResponse.success(null, "Đã từ chối yêu cầu"));
+    }
+
+    // Template Discovery
+    @GetMapping("/discovery")
+    public ResponseEntity<ApiResponse<List<JourneyResponse>>> getDiscoveryTemplates() {
+        return ResponseEntity.ok(ApiResponse.success(journeyService.getDiscoveryTemplates()));
+    }
+
+    @PostMapping("/{journeyId}/fork")
+    public ResponseEntity<ApiResponse<JourneyResponse>> forkJourney(
+            @PathVariable UUID journeyId,
+            @AuthenticationPrincipal User currentUser) {
+        
+        JourneyResponse response = journeyService.forkJourney(journeyId, currentUser);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(ApiResponse.success(response, "Đã sao chép hành trình thành công"));
+    }
+
+    // --- MỚI: API Nudge ---
+    @PostMapping("/{journeyId}/members/{memberId}/nudge")
+    public ResponseEntity<ApiResponse<Void>> nudgeMember(
+            @PathVariable UUID journeyId,
+            @PathVariable Long memberId,
+            @AuthenticationPrincipal User currentUser) {
+        
+        journeyService.nudgeMember(journeyId, memberId, currentUser);
+        return ResponseEntity.ok(ApiResponse.success(null, "Đã chọc ghẹo thành công!"));
     }
 }

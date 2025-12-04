@@ -58,24 +58,20 @@ public class GamificationServiceImpl implements GamificationService {
     @Async("taskExecutor")
     @Transactional
     public void processCheckinGamification(Checkin checkin) {
+        // --- LOGIC CŨ GIỮ NGUYÊN (Vẫn cộng điểm bình thường) ---
         log.info("Processing gamification for checkin {}", checkin.getId());
 
-        // 1. Lấy thông tin (chỉ đọc để check điều kiện Badge)
         JourneyParticipant participant = participantRepository
                 .findByJourneyIdAndUserId(checkin.getJourney().getId(), checkin.getUser().getId())
                 .orElse(null);
         
         if (participant == null) return;
 
-        // LƯU Ý: Không update currentStreak ở đây nữa vì CheckinService đã làm rồi để đảm bảo Transaction
-
-        // 2. Cộng điểm
         if (checkin.getStatus() == CheckinStatus.NORMAL || checkin.getStatus() == CheckinStatus.COMEBACK) {
             long pointsEarned = (checkin.getStatus() == CheckinStatus.COMEBACK) ? pointsPerComeback : pointsPerCheckin;
             awardPoints(checkin.getUser(), (int) pointsEarned, "Check-in: " + checkin.getJourney().getName());
         }
 
-        // 3. Trao huy hiệu (Dựa trên streak đã được update bên CheckinService)
         if (checkin.getStatus() != CheckinStatus.REST) {
             checkAndAwardBadges(checkin, participant.getCurrentStreak());
         }
@@ -95,6 +91,51 @@ public class GamificationServiceImpl implements GamificationService {
                 .source(PointSource.CHECKIN)
                 .build();
         pointHistoryRepository.save(history);
+    }
+
+    // --- LOGIC MỚI: THU HỒI ĐIỂM & STREAK ---
+    @Override
+    @Transactional
+    public void revokeGamification(Checkin checkin) {
+        log.info("Revoking gamification for checkin {}", checkin.getId());
+        User user = checkin.getUser();
+        JourneyParticipant participant = participantRepository
+                .findByJourneyIdAndUserId(checkin.getJourney().getId(), user.getId())
+                .orElse(null);
+
+        if (participant == null) return;
+
+        // 1. Trừ điểm (Phạt) - Lấy lại số điểm đã cộng
+        // Mặc định trừ theo mức NORMAL, nếu cần chính xác hơn có thể lưu snapshot điểm vào checkin
+        int penalty = pointsPerCheckin; 
+        
+        // Cho phép điểm âm (như một hình phạt răn đe)
+        user.setPoints(user.getPoints() - penalty);
+        userRepository.save(user);
+
+        // Ghi log lịch sử trừ tiền
+        PointHistory history = PointHistory.builder()
+                .user(user)
+                .amount((long) -penalty)
+                .balanceAfter(user.getPoints())
+                .reason("Bị trừ điểm do bài đăng không hợp lệ (ID: " + checkin.getId() + ")")
+                .source(PointSource.ADMIN_ADJUST)
+                .build();
+        pointHistoryRepository.save(history);
+
+        // 2. Rollback Streak
+        if (participant.getCurrentStreak() > 0) {
+            participant.setCurrentStreak(participant.getCurrentStreak() - 1);
+            
+            // Reset ngày check-in cuối cùng về ngày hôm qua
+            // Mục đích: Để hệ thống hiểu là "Hôm nay chưa check-in", cho phép user đăng lại bài khác hợp lệ
+            if (participant.getLastCheckinAt() != null) {
+                participant.setLastCheckinAt(participant.getLastCheckinAt().minusDays(1));
+            }
+            participantRepository.save(participant);
+        }
+        
+        log.info("Revoked points and streak for User {}", user.getId());
     }
 
     private void checkAndAwardBadges(Checkin checkin, int currentStreak) {
@@ -165,7 +206,6 @@ public class GamificationServiceImpl implements GamificationService {
     @Transactional
     @CacheEvict(value = "journey_widget", key = "#journeyId + '-' + #userId")
     public void refreshUserStreak(UUID journeyId, Long userId) {
-        // Giữ lại để tương thích nhưng thực tế Job đã lo phần này
         JourneyParticipant participant = participantRepository
                 .findByJourneyIdAndUserId(journeyId, userId)
                 .orElse(null);

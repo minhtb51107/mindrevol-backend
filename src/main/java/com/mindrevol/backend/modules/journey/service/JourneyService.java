@@ -11,10 +11,8 @@ public interface JourneyService {
     JourneyResponse createJourney(CreateJourneyRequest request, User currentUser);
     JourneyResponse joinJourney(JoinJourneyRequest request, User currentUser);
     
-    // --- CẬP NHẬT MỚI ---
     void leaveJourney(UUID journeyId, User currentUser);
     JourneyResponse updateJourneySettings(UUID journeyId, UpdateJourneySettingsRequest request, User currentUser);
-    // --------------------
 
     List<JourneyResponse> getMyJourneys(User currentUser);
     void kickMember(UUID journeyId, Long memberId, User currentUser);
@@ -22,4 +20,11 @@ public interface JourneyService {
     JourneyWidgetResponse getWidgetInfo(UUID journeyId, Long userId);
     void approveJoinRequest(UUID requestId, User admin);
     void rejectJoinRequest(UUID requestId, User admin);
+
+    // Template Discovery
+    List<JourneyResponse> getDiscoveryTemplates();
+    JourneyResponse forkJourney(UUID templateId, User currentUser);
+
+    // --- MỚI: Nudge (Chọc ghẹo) ---
+    void nudgeMember(UUID journeyId, Long memberId, User currentUser);
 }

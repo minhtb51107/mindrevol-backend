@@ -2,6 +2,7 @@ package com.mindrevol.backend.modules.journey.repository;
 
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
@@ -15,6 +16,11 @@ public interface JourneyRepository extends JpaRepository<Journey, UUID> {
     
     boolean existsByInviteCode(String inviteCode);
 
-    // --- MỚI: Tìm tất cả hành trình do User này làm chủ (Creator) ---
+    // Tìm tất cả hành trình do User này làm chủ (Creator)
     List<Journey> findByCreatorId(Long creatorId);
+
+    // --- MỚI: Tìm các hành trình mẫu (Template) ---
+    // Chỉ lấy những cái được đánh dấu là template và đang active
+    @Query("SELECT j FROM Journey j WHERE j.isTemplate = true AND j.status = 'ACTIVE'")
+    List<Journey> findAllTemplates();
 }
