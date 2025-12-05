@@ -2,10 +2,10 @@ package com.mindrevol.backend.config;
 
 import com.mindrevol.backend.config.security.CustomAuthenticationEntryPoint;
 import com.mindrevol.backend.config.security.JwtAuthenticationFilter;
-import com.mindrevol.backend.config.security.RateLimitFilter; // <-- 1. Import Filter mới
+import com.mindrevol.backend.config.security.RateLimitFilter;
 import com.mindrevol.backend.config.security.UserDetailsServiceImpl;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.annotation.Value; // <-- 2. Import Value
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -17,7 +17,7 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
-import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer; // <-- 3. Import Config Header
+import org.springframework.security.config.annotation.web.configurers.HeadersConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -39,7 +39,7 @@ public class SecurityConfig {
     private final UserDetailsServiceImpl userDetailsService;
     private final JwtAuthenticationFilter authenticationJwtTokenFilter;
     private final CustomAuthenticationEntryPoint unauthorizedHandler;
-    private final RateLimitFilter rateLimitFilter; 
+    private final RateLimitFilter rateLimitFilter;
 
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
@@ -47,7 +47,7 @@ public class SecurityConfig {
     @Bean
     public AuthenticationProvider authenticationProvider() {
         DaoAuthenticationProvider authProvider = new DaoAuthenticationProvider();
-        authProvider.setUserDetailsService(userDetailsService); 
+        authProvider.setUserDetailsService(userDetailsService);
         authProvider.setPasswordEncoder(passwordEncoder());
         return authProvider;
     }
@@ -67,13 +67,11 @@ public class SecurityConfig {
         http
             .csrf(AbstractHttpConfigurer::disable)
             .cors(cors -> cors.configurationSource(corsConfigurationSource()))
-            
             .headers(headers -> headers
-                .xssProtection(HeadersConfigurer.XXssConfig::disable) 
+                .xssProtection(HeadersConfigurer.XXssConfig::disable)
                 .contentSecurityPolicy(csp -> csp.policyDirectives("script-src 'self'"))
                 .frameOptions(HeadersConfigurer.FrameOptionsConfig::deny)
             )
-
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
@@ -86,41 +84,38 @@ public class SecurityConfig {
                         "/webjars/**",
                         "/ws/**",
                         "/api/v1/plans/{shareableLink}/public",
-                        "/actuator/health",    
-                        "/actuator/prometheus"
+                        "/actuator/health",
+                        "/actuator/prometheus",
+                        "/api/v1/payment/webhook" // <--- [QUAN TRỌNG] Cho phép SePay gọi vào không cần Login
                 ).permitAll()
                 .requestMatchers("/api/v1/**").authenticated()
                 .requestMatchers(HttpMethod.OPTIONS).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/files/upload").authenticated()
                 .anyRequest().authenticated()
             );
-        
-        http.authenticationProvider(authenticationProvider());
-        
-        http.addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class);
 
+        http.authenticationProvider(authenticationProvider());
+        http.addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class);
         http.addFilterBefore(authenticationJwtTokenFilter, UsernamePasswordAuthenticationFilter.class);
-        
+
         return http.build();
     }
 
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        
         if (allowedOrigins != null && !allowedOrigins.isEmpty()) {
             configuration.setAllowedOrigins(Arrays.asList(allowedOrigins.split(",")));
         } else {
             configuration.setAllowedOrigins(List.of("http://localhost:5173"));
         }
-
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
-        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type", "X-Requested-With", "Accept", "X-Rate-Limit-Remaining", "Retry-After"));
+        configuration.setAllowedHeaders(Arrays.asList("Authorization", "Cache-Control", "Content-Type", "X-Requested-With", "Accept", "X-Rate-Limit-Remaining", "Retry-After", "Apikey")); // Thêm Apikey cho chắc
         configuration.setAllowCredentials(true);
         configuration.setMaxAge(3600L);
-        
+
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/**", configuration); 
+        source.registerCorsConfiguration("/**", configuration);
         return source;
     }
 }

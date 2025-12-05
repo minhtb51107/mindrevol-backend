@@ -119,6 +119,7 @@ dependencies {
     implementation 'net.coobird:thumbnailator:0.4.20' 
 
     implementation 'com.google.firebase:firebase-admin:9.2.0'
+    
 }
 
 tasks.named('test') {

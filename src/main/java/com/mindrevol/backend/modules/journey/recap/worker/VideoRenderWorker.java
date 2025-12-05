@@ -1,49 +1,57 @@
 package com.mindrevol.backend.modules.journey.recap.worker;
 
-import com.mindrevol.backend.modules.journey.recap.dto.VideoTask;
-import com.mindrevol.backend.modules.notification.entity.NotificationType;
-import com.mindrevol.backend.modules.notification.service.NotificationService;
-import com.mindrevol.backend.modules.storage.service.FileStorageService;
+// import com.mindrevol.backend.modules.journey.recap.dto.VideoTask;
+// import com.mindrevol.backend.modules.notification.entity.NotificationType;
+// import com.mindrevol.backend.modules.notification.service.NotificationService;
+// import com.mindrevol.backend.modules.storage.service.FileStorageService;
 import jakarta.annotation.PostConstruct;
-import jakarta.annotation.PreDestroy;
+// import jakarta.annotation.PreDestroy;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.redisson.api.RBlockingQueue;
-import org.redisson.api.RedissonClient;
+// import org.redisson.api.RBlockingQueue;
+// import org.redisson.api.RedissonClient;
 import org.springframework.stereotype.Component;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.UUID;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+// import java.io.File;
+// import java.io.FileInputStream;
+// import java.io.InputStream;
+// import java.nio.file.Files;
+// import java.nio.file.Path;
+// import java.nio.file.StandardCopyOption;
+// import java.util.ArrayList;
+// import java.util.List;
+// import java.util.UUID;
+// import java.util.concurrent.ExecutorService;
+// import java.util.concurrent.Executors;
 
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class VideoRenderWorker {
 
-    private final RedissonClient redissonClient;
-    private final FileStorageService fileStorageService;
-    private final NotificationService notificationService;
+    /*
+     * --- MVP SURVIVAL MODE: TẮT TÍNH NĂNG RENDER VIDEO ---
+     * Lý do: Render video bằng FFmpeg ngốn 100% CPU. Với hạ tầng giá rẻ (VPS 300k),
+     * việc này sẽ làm sập server ngay lập tức nếu có vài user dùng cùng lúc.
+     * Giải pháp: Tạm thời comment toàn bộ dependency và logic xử lý.
+     * Khi nào có tiền nâng cấp server hoặc bán gói Premium, hãy uncomment lại.
+     */
 
-    private static final String VIDEO_QUEUE_NAME = "video_render_queue";
+    // private final RedissonClient redissonClient;
+    // private final FileStorageService fileStorageService;
+    // private final NotificationService notificationService;
+
+    // private static final String VIDEO_QUEUE_NAME = "video_render_queue";
     
-    // Video render rất nặng CPU, chỉ cho phép 1 luồng chạy tại 1 thời điểm để không sập server
-    private final ExecutorService executorService = Executors.newSingleThreadExecutor();
+    // private final ExecutorService executorService = Executors.newSingleThreadExecutor();
 
     @PostConstruct
     public void startWorker() {
-        executorService.submit(this::processQueue);
+        log.warn(">>> VideoRenderWorker is DISABLED in Survival Mode to save CPU resource. <<<");
+        // executorService.submit(this::processQueue); // <--- Đã tắt dòng này để không chạy ngầm
     }
 
+    /*
     @PreDestroy
     public void stopWorker() {
         log.info("Stopping Video Worker...");
@@ -113,7 +121,7 @@ public class VideoRenderWorker {
                 throw new RuntimeException("FFmpeg failed with exit code " + exitCode);
             }
 
-            // 4. Upload Video lên MinIO
+            // 4. Upload Video lên Storage (Cloudinary/MinIO)
             File videoFile = new File(outputPath);
             String videoUrl;
             try (FileInputStream fis = new FileInputStream(videoFile)) {
@@ -140,7 +148,6 @@ public class VideoRenderWorker {
 
         } catch (Exception e) {
             log.error("Failed to render video for user {}", task.getUserId(), e);
-            // Có thể retry nếu cần
         } finally {
             // 6. Dọn dẹp thư mục tạm
             if (tempDir != null) {
@@ -155,4 +162,5 @@ public class VideoRenderWorker {
         }
         file.delete();
     }
+    */
 }

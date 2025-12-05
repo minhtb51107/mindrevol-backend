@@ -1,5 +1,6 @@
 package com.mindrevol.backend.modules.journey.service.impl;
 
+import com.mindrevol.backend.common.constant.AppConstants; // [MỚI] Import Constant
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
@@ -54,15 +55,30 @@ public class JourneyServiceImpl implements JourneyService {
     private final CheckinRepository checkinRepository;
     private final ApplicationEventPublisher eventPublisher;
     
-    // --- INJECT THÊM ---
     private final NotificationService notificationService;
     private final RedisTemplate<String, Object> redisTemplate;
-    // -------------------
 
     @Override
     @Transactional
     public JourneyResponse createJourney(CreateJourneyRequest request, User currentUser) {
-        // 1. Validate đầu vào
+        // --- 1. [MỚI] CHECK GIỚI HẠN SỐ LƯỢNG HÀNH TRÌNH ---
+        // Đếm số hành trình user này đang làm chủ và còn ACTIVE
+        long activeJourneys = journeyRepository.countByCreatorIdAndStatus(
+                currentUser.getId(), 
+                JourneyStatus.ACTIVE
+        );
+
+        // Logic check Premium (Tạm thời coi tất cả là FREE)
+        if (activeJourneys >= AppConstants.LIMIT_OWNED_JOURNEYS_FREE) {
+            throw new BadRequestException(
+                "Bạn chỉ được tạo tối đa " + 
+                AppConstants.LIMIT_OWNED_JOURNEYS_FREE + 
+                " hành trình cùng lúc. Hãy hoàn thành hoặc lưu trữ hành trình cũ trước khi tạo mới."
+            );
+        }
+        // ---------------------------------------------------
+
+        // Validate đầu vào
         if (request.getStartDate().isBefore(LocalDate.now())) {
             throw new IllegalArgumentException("Start date cannot be in the past");
         }
@@ -70,40 +86,34 @@ public class JourneyServiceImpl implements JourneyService {
             throw new IllegalArgumentException("End date must be after start date");
         }
 
-        // 2. Sinh mã mời
+        // Sinh mã mời
         String inviteCode = generateUniqueInviteCode();
 
-        // =========================================================================
-        // 3. LOGIC CỐT LÕI (ĐÃ SỬA): Mapping "Mục tiêu" -> "Luật chơi"
-        // =========================================================================
-        
-        // Mặc định cho HABIT / ROADMAP (Kỷ luật cao, Tập trung cá nhân)
+        // Mapping "Mục tiêu" -> "Luật chơi"
         boolean hasStreak = true;
         boolean reqTicket = true;
         boolean isHardcore = true;
-        InteractionType interactionType = InteractionType.PRIVATE_REPLY; // <--- CỐT LÕI: Kiểu Locket
+        InteractionType interactionType = InteractionType.PRIVATE_REPLY;
 
-        // Ghi đè cấu hình nếu là loại khác
         if (request.getType() == JourneyType.MEMORIES) {
             hasStreak = false;
             reqTicket = false;
             isHardcore = false;
-            interactionType = InteractionType.GROUP_DISCUSS; // <--- CỐT LÕI: Kiểu Facebook Group
+            interactionType = InteractionType.GROUP_DISCUSS;
         } 
         else if (request.getType() == JourneyType.PROJECT) {
             hasStreak = false; 
             reqTicket = false;
             isHardcore = false;
-            interactionType = InteractionType.GROUP_DISCUSS; // Cần thảo luận
+            interactionType = InteractionType.GROUP_DISCUSS;
         }
         else if (request.getType() == JourneyType.CHALLENGE) {
             hasStreak = true;
             reqTicket = false;
             isHardcore = false;
-            interactionType = InteractionType.RESTRICTED; // <--- CỐT LÕI: Kiểu Channel thông báo
+            interactionType = InteractionType.RESTRICTED;
         }
 
-        // 4. Build Journey (Lưu xuống DB với các cờ đã tính toán ở trên)
         Journey journey = Journey.builder()
                 .name(request.getName())
                 .description(request.getDescription())
@@ -114,17 +124,14 @@ public class JourneyServiceImpl implements JourneyService {
                 .inviteCode(inviteCode)
                 .status(JourneyStatus.ACTIVE)
                 .creator(currentUser)
-                // --- CÁC TRƯỜNG TỰ ĐỘNG ---
                 .hasStreak(hasStreak)
                 .requiresFreezeTicket(reqTicket)
                 .isHardcore(isHardcore)
-                .interactionType(interactionType) // Đã map đúng triết lý
-                // ---------------------------
+                .interactionType(interactionType)
                 .build();
 
         Journey savedJourney = journeyRepository.save(journey);
 
-        // 5. Xử lý Roadmap (Nếu có danh sách task)
         if (request.getType() == JourneyType.ROADMAP && request.getRoadmapTasks() != null) {
              List<JourneyTask> tasks = request.getRoadmapTasks().stream()
                  .map(t -> JourneyTask.builder()
@@ -137,19 +144,15 @@ public class JourneyServiceImpl implements JourneyService {
              journeyTaskRepository.saveAll(tasks);
         }
         
-        // 6. Thêm người tạo vào làm thành viên (Dùng đúng JourneyParticipant)
         JourneyParticipant creatorParticipant = JourneyParticipant.builder()
                 .journey(savedJourney)
                 .user(currentUser)
-                //.joinedAt(LocalDateTime.now()) // Nếu entity của bạn có trường này
-                .role(JourneyRole.OWNER)       // <--- Đảm bảo Enum JourneyRole đã có OWNER
+                .role(JourneyRole.OWNER)
                 .currentStreak(0)
-                // .status(ParticipantStatus.ACTIVE) // Nếu entity có trường status
                 .build();
 
         participantRepository.save(creatorParticipant);
         
-        // 7. Trả về Response
         return journeyMapper.toResponse(savedJourney);
     }
 
@@ -182,6 +185,16 @@ public class JourneyServiceImpl implements JourneyService {
         if (participantRepository.existsByJourneyIdAndUserId(journey.getId(), currentUser.getId())) {
             throw new BadRequestException("Bạn đã tham gia hành trình này rồi");
         }
+
+        // --- 2. [MỚI] CHECK GIỚI HẠN SỐ LƯỢNG THÀNH VIÊN ---
+        long currentMembers = participantRepository.countByJourneyId(journey.getId());
+        if (currentMembers >= AppConstants.LIMIT_MEMBERS_PER_JOURNEY_FREE) {
+             throw new BadRequestException(
+                 "Hành trình này đã đầy thành viên (Giới hạn: " + 
+                 AppConstants.LIMIT_MEMBERS_PER_JOURNEY_FREE + "). Vui lòng liên hệ trưởng nhóm để nâng cấp."
+             );
+        }
+        // ---------------------------------------------------
 
         if (journey.isRequireApproval()) {
             Optional<JourneyRequest> existingReq = journeyRequestRepository.findByJourneyIdAndUserId(journey.getId(), currentUser.getId());
@@ -223,9 +236,16 @@ public class JourneyServiceImpl implements JourneyService {
         
         JourneyParticipant adminPart = participantRepository.findByJourneyIdAndUserId(req.getJourney().getId(), admin.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
-        if (adminPart.getRole() != JourneyRole.ADMIN) {
+        if (adminPart.getRole() != JourneyRole.ADMIN && adminPart.getRole() != JourneyRole.OWNER) {
             throw new BadRequestException("Chỉ quản trị viên mới được duyệt thành viên");
         }
+
+        // --- [MỚI] CHECK LẠI GIỚI HẠN TRƯỚC KHI DUYỆT ---
+        long currentMembers = participantRepository.countByJourneyId(req.getJourney().getId());
+        if (currentMembers >= AppConstants.LIMIT_MEMBERS_PER_JOURNEY_FREE) {
+             throw new BadRequestException("Nhóm đã đầy! Không thể duyệt thêm thành viên.");
+        }
+        // ------------------------------------------------
 
         if (req.getStatus() != RequestStatus.PENDING) {
             throw new BadRequestException("Yêu cầu này đã được xử lý");
@@ -252,7 +272,7 @@ public class JourneyServiceImpl implements JourneyService {
 
         JourneyParticipant adminPart = participantRepository.findByJourneyIdAndUserId(req.getJourney().getId(), admin.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
-        if (adminPart.getRole() != JourneyRole.ADMIN) {
+        if (adminPart.getRole() != JourneyRole.ADMIN && adminPart.getRole() != JourneyRole.OWNER) {
             throw new BadRequestException("Chỉ quản trị viên mới được duyệt thành viên");
         }
 
@@ -293,7 +313,7 @@ public class JourneyServiceImpl implements JourneyService {
         JourneyParticipant adminPart = participantRepository.findByJourneyIdAndUserId(journeyId, currentUser.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
 
-        if (adminPart.getRole() != JourneyRole.ADMIN) {
+        if (adminPart.getRole() != JourneyRole.ADMIN && adminPart.getRole() != JourneyRole.OWNER) {
             throw new BadRequestException("Chỉ Quản trị viên mới được thay đổi cài đặt");
         }
 
@@ -314,7 +334,7 @@ public class JourneyServiceImpl implements JourneyService {
         JourneyParticipant requester = participantRepository.findByJourneyIdAndUserId(journeyId, currentUser.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không ở trong hành trình này"));
 
-        if (requester.getRole() != JourneyRole.ADMIN) {
+        if (requester.getRole() != JourneyRole.ADMIN && requester.getRole() != JourneyRole.OWNER) {
             throw new BadRequestException("Bạn không có quyền mời thành viên ra khỏi nhóm");
         }
         if (currentUser.getId().equals(memberId)) {
@@ -424,6 +444,13 @@ public class JourneyServiceImpl implements JourneyService {
     @Override
     @Transactional
     public JourneyResponse forkJourney(UUID templateId, User currentUser) {
+        // --- [MỚI] CHECK GIỚI HẠN SỐ LƯỢNG HÀNH TRÌNH ---
+        long activeJourneys = journeyRepository.countByCreatorIdAndStatus(currentUser.getId(), JourneyStatus.ACTIVE);
+        if (activeJourneys >= AppConstants.LIMIT_OWNED_JOURNEYS_FREE) {
+            throw new BadRequestException("Bạn đã đạt giới hạn số lượng hành trình. Không thể sao chép thêm.");
+        }
+        // ------------------------------------------------
+
         Journey original = journeyRepository.findById(templateId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình mẫu không tồn tại"));
 
@@ -460,7 +487,7 @@ public class JourneyServiceImpl implements JourneyService {
         JourneyParticipant participant = JourneyParticipant.builder()
                 .journey(savedClone)
                 .user(currentUser)
-                .role(JourneyRole.ADMIN)
+                .role(JourneyRole.OWNER) // Đổi thành OWNER
                 .currentStreak(0)
                 .build();
         participantRepository.save(participant);
@@ -470,11 +497,9 @@ public class JourneyServiceImpl implements JourneyService {
         return journeyMapper.toResponse(savedClone);
     }
 
-    // --- MỚI: NUDGE (CHỌC GHẸO) ---
     @Override
     @Transactional
     public void nudgeMember(UUID journeyId, Long memberId, User currentUser) {
-        // 1. Kiểm tra quyền hạn
         if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
             throw new BadRequestException("Bạn không phải thành viên của hành trình này.");
         }
@@ -486,8 +511,6 @@ public class JourneyServiceImpl implements JourneyService {
              throw new BadRequestException("Bạn không thể tự nhắc nhở chính mình (hãy đặt báo thức đi!).");
         }
 
-        // Kiểm tra xem họ đã check-in hôm nay chưa
-        // (Sử dụng Timezone của họ để check)
         String tz = target.getUser().getTimezone() != null ? target.getUser().getTimezone() : "UTC";
         LocalDate todayTarget = LocalDate.now(ZoneId.of(tz));
         
@@ -495,17 +518,14 @@ public class JourneyServiceImpl implements JourneyService {
             throw new BadRequestException("Người này đã check-in hôm nay rồi!");
         }
 
-        // 2. Rate Limit (Chống Spam): 1 lần/ngày/cặp user
         String redisKey = "nudge:" + journeyId + ":" + currentUser.getId() + ":" + memberId;
         
         if (Boolean.TRUE.equals(redisTemplate.hasKey(redisKey))) {
             throw new BadRequestException("Bạn đã nhắc nhở người này hôm nay rồi. Đừng spam nhé!");
         }
         
-        // Lưu cache đánh dấu đã nudge, hết hạn sau 24h
         redisTemplate.opsForValue().set(redisKey, "1", 24, TimeUnit.HOURS);
 
-        // 3. Gửi Thông Báo
         notificationService.sendAndSaveNotification(
                 memberId,
                 currentUser.getId(),

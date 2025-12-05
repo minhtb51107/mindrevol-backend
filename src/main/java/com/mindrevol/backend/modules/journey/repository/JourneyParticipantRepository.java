@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, UUID> { // Lưu ý: ID của bảng này là UUID hay Long? Nếu entity khai báo @Id UUID id thì để UUID, nếu Long id thì để Long. Ở đây tôi giữ UUID theo code gốc của bạn.
+public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, UUID> {
 
     // 1. Tìm kiếm cơ bản
     @Query("SELECT jp FROM JourneyParticipant jp JOIN FETCH jp.journey WHERE jp.user.id = :userId")
@@ -28,6 +28,9 @@ public interface JourneyParticipantRepository extends JpaRepository<JourneyParti
     
     Optional<JourneyParticipant> findByJourneyIdAndUserId(UUID journeyId, Long userId);
     
+    // --- THÊM MỚI: Đếm số thành viên trong 1 nhóm ---
+    long countByJourneyId(UUID journeyId);
+
     // 3. Logic Gamification & Job
     Slice<JourneyParticipant> findByCurrentStreakGreaterThan(Integer minStreak, Pageable pageable);
     

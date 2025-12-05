@@ -10,11 +10,11 @@ import java.util.UUID;
 
 @Entity
 @Table(name = "journey_participants", 
-uniqueConstraints = {@UniqueConstraint(columnNames = {"journey_id", "user_id"})},
-indexes = {
-    @Index(name = "idx_participant_user", columnList = "user_id"),
-    @Index(name = "idx_participant_journey_user", columnList = "journey_id, user_id") 
-}
+    uniqueConstraints = {@UniqueConstraint(columnNames = {"journey_id", "user_id"})},
+    indexes = {
+        @Index(name = "idx_participant_user", columnList = "user_id"),
+        @Index(name = "idx_participant_journey_user", columnList = "journey_id, user_id") 
+    }
 )
 @Getter
 @Setter
@@ -52,4 +52,9 @@ public class JourneyParticipant {
     
     @Column(name = "last_checkin_at")
     private LocalDate lastCheckinAt;
+
+    // --- [MỚI] Trường lưu chuỗi dự phòng để Repair (Sửa sai) ---
+    @Column(name = "saved_streak")
+    @Builder.Default
+    private Integer savedStreak = 0;
 }

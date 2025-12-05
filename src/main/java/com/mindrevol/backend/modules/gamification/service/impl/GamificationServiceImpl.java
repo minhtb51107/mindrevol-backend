@@ -1,6 +1,7 @@
 package com.mindrevol.backend.modules.gamification.service.impl;
 
 import com.mindrevol.backend.common.exception.BadRequestException;
+import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
 import com.mindrevol.backend.modules.gamification.dto.response.BadgeResponse;
@@ -47,6 +48,10 @@ public class GamificationServiceImpl implements GamificationService {
 
     @Value("${app.gamification.points.item-freeze-cost}")
     private int freezeItemCost;
+    
+    // Giá vé sửa chuỗi (thường đắt gấp đôi vé đóng băng)
+    @Value("${app.gamification.points.item-repair-cost:1000}") 
+    private int repairItemCost;
 
     @Value("${app.gamification.points.checkin-normal}")
     private int pointsPerCheckin;
@@ -58,7 +63,6 @@ public class GamificationServiceImpl implements GamificationService {
     @Async("taskExecutor")
     @Transactional
     public void processCheckinGamification(Checkin checkin) {
-        // --- LOGIC CŨ GIỮ NGUYÊN (Vẫn cộng điểm bình thường) ---
         log.info("Processing gamification for checkin {}", checkin.getId());
 
         JourneyParticipant participant = participantRepository
@@ -93,7 +97,6 @@ public class GamificationServiceImpl implements GamificationService {
         pointHistoryRepository.save(history);
     }
 
-    // --- LOGIC MỚI: THU HỒI ĐIỂM & STREAK ---
     @Override
     @Transactional
     public void revokeGamification(Checkin checkin) {
@@ -105,15 +108,11 @@ public class GamificationServiceImpl implements GamificationService {
 
         if (participant == null) return;
 
-        // 1. Trừ điểm (Phạt) - Lấy lại số điểm đã cộng
-        // Mặc định trừ theo mức NORMAL, nếu cần chính xác hơn có thể lưu snapshot điểm vào checkin
+        // Trừ điểm phạt
         int penalty = pointsPerCheckin; 
-        
-        // Cho phép điểm âm (như một hình phạt răn đe)
         user.setPoints(user.getPoints() - penalty);
         userRepository.save(user);
 
-        // Ghi log lịch sử trừ tiền
         PointHistory history = PointHistory.builder()
                 .user(user)
                 .amount((long) -penalty)
@@ -123,19 +122,14 @@ public class GamificationServiceImpl implements GamificationService {
                 .build();
         pointHistoryRepository.save(history);
 
-        // 2. Rollback Streak
+        // Rollback Streak
         if (participant.getCurrentStreak() > 0) {
             participant.setCurrentStreak(participant.getCurrentStreak() - 1);
-            
-            // Reset ngày check-in cuối cùng về ngày hôm qua
-            // Mục đích: Để hệ thống hiểu là "Hôm nay chưa check-in", cho phép user đăng lại bài khác hợp lệ
             if (participant.getLastCheckinAt() != null) {
                 participant.setLastCheckinAt(participant.getLastCheckinAt().minusDays(1));
             }
             participantRepository.save(participant);
         }
-        
-        log.info("Revoked points and streak for User {}", user.getId());
     }
 
     private void checkAndAwardBadges(Checkin checkin, int currentStreak) {
@@ -177,7 +171,6 @@ public class GamificationServiceImpl implements GamificationService {
                 badge.getId().toString(),
                 badge.getIconUrl()
         );
-        log.info("Awarded badge [{}] to user [{}]", badge.getName(), user.getId());
     }
     
     @Override
@@ -200,6 +193,47 @@ public class GamificationServiceImpl implements GamificationService {
         pointHistoryRepository.save(history);
         
         return true;
+    }
+
+    // --- [MỚI] Hàm Sửa Chuỗi (Repair) ---
+    @Override
+    @Transactional
+    public void repairStreak(UUID journeyId, User user) {
+        JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journeyId, user.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Bạn không tham gia hành trình này"));
+
+        // 1. Kiểm tra có chuỗi nào để cứu không
+        if (participant.getSavedStreak() == null || participant.getSavedStreak() <= 0) {
+            throw new BadRequestException("Bạn không có chuỗi nào bị mất gần đây để khôi phục.");
+        }
+        
+        // 2. Trừ tiền/điểm
+        if (user.getPoints() < repairItemCost) {
+            throw new BadRequestException("Bạn không đủ điểm để sửa chuỗi! Cần " + repairItemCost + " điểm.");
+        }
+        user.setPoints(user.getPoints() - repairItemCost);
+        userRepository.save(user);
+
+        // 3. Khôi phục chuỗi
+        participant.setCurrentStreak(participant.getSavedStreak());
+        participant.setSavedStreak(0); // Xóa backup sau khi đã dùng
+        
+        // Hack: Set ngày check-in về "Hôm qua" để hệ thống tính là mạch lạc
+        participant.setLastCheckinAt(LocalDate.now().minusDays(1));
+        
+        participantRepository.save(participant);
+
+        // 4. Ghi log
+        PointHistory history = PointHistory.builder()
+                .user(user)
+                .amount((long) -repairItemCost)
+                .balanceAfter(user.getPoints())
+                .reason("Sửa chuỗi (Repair Streak)")
+                .source(PointSource.SHOP_PURCHASE)
+                .build();
+        pointHistoryRepository.save(history);
+        
+        log.info("User {} repaired streak for journey {}", user.getId(), journeyId);
     }
     
     @Override

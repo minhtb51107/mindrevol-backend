@@ -21,6 +21,9 @@ public interface GamificationService {
     
     void awardPoints(User user, int amount, String reason); 
 
-    // --- MỚI: Thu hồi điểm và Streak (Dùng khi bài check-in bị report là Fake) ---
+    // Thu hồi điểm và Streak (Dùng khi bài check-in bị report là Fake)
     void revokeGamification(Checkin checkin);
+
+    // --- [MỚI] Sửa chuỗi (Trả tiền để khôi phục chuỗi đã mất) ---
+    void repairStreak(UUID journeyId, User user);
 }

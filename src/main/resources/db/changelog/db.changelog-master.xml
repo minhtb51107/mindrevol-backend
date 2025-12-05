@@ -47,4 +47,8 @@
     
     <include file="changes/032-add-journey-templates.xml" relativeToChangelogFile="true"/>
     <include file="changes/033-add-verification.xml" relativeToChangelogFile="true"/>
+    <include file="changes/034-add-saved-streak.xml" relativeToChangelogFile="true"/>
+    
+    <include file="changes/035-create-payment-transactions.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

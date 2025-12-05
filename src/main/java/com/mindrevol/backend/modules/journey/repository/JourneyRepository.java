@@ -1,6 +1,7 @@
 package com.mindrevol.backend.modules.journey.repository;
 
 import com.mindrevol.backend.modules.journey.entity.Journey;
+import com.mindrevol.backend.modules.journey.entity.JourneyStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.stereotype.Repository;
@@ -18,6 +19,10 @@ public interface JourneyRepository extends JpaRepository<Journey, UUID> {
 
     // Tìm tất cả hành trình do User này làm chủ (Creator)
     List<Journey> findByCreatorId(Long creatorId);
+
+    // --- MỚI: Đếm số hành trình đang hoạt động của 1 người ---
+    // Dùng để kiểm tra giới hạn (Limiters)
+    long countByCreatorIdAndStatus(Long creatorId, JourneyStatus status);
 
     // --- MỚI: Tìm các hành trình mẫu (Template) ---
     // Chỉ lấy những cái được đánh dấu là template và đang active
