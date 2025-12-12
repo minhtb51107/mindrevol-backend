@@ -36,15 +36,18 @@ public class RateLimitFilter extends OncePerRequestFilter {
 
         Bucket bucket;
         
-        // Phân loại request để áp dụng Rate Limit
+        // Phân loại request
         if (uri.startsWith("/api/v1/auth/login") || uri.startsWith("/api/v1/auth/register")) {
             bucket = rateLimitingService.resolveLoginBucket(ip);
         } 
-        // --- THÊM DÒNG NÀY: Áp dụng Strict Mode cho API Join Journey ---
+        // --- MỚI: OTP CHẶT CHẼ ---
+        else if (uri.startsWith("/api/v1/auth/otp")) {
+            bucket = rateLimitingService.resolveOtpBucket(ip);
+        }
+        // -------------------------
         else if (uri.contains("/journeys/join")) {
             bucket = rateLimitingService.resolveStrictBucket(ip);
         }
-        // -------------------------------------------------------------
         else if (uri.startsWith("/api/v1/")) {
             bucket = rateLimitingService.resolveGeneralBucket(ip);
         } else {

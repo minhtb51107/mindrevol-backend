@@ -4,13 +4,19 @@ import java.util.List;
 
 import com.mindrevol.backend.modules.auth.dto.request.AppleLoginRequest;
 import com.mindrevol.backend.modules.auth.dto.request.ChangePasswordRequest;
+import com.mindrevol.backend.modules.auth.dto.request.FacebookLoginRequest;
 import com.mindrevol.backend.modules.auth.dto.request.ForgotPasswordRequest;
+import com.mindrevol.backend.modules.auth.dto.request.GoogleLoginRequest;
 import com.mindrevol.backend.modules.auth.dto.request.LoginRequest;
 import com.mindrevol.backend.modules.auth.dto.request.RegisterRequest;
 import com.mindrevol.backend.modules.auth.dto.request.ResetPasswordRequest;
 import com.mindrevol.backend.modules.auth.dto.response.JwtResponse;
 import com.mindrevol.backend.modules.auth.dto.response.UserSessionResponse;
 import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse; 
+import com.mindrevol.backend.modules.auth.dto.request.SendOtpRequest;
+import com.mindrevol.backend.modules.auth.dto.request.TikTokLoginRequest;
+import com.mindrevol.backend.modules.auth.dto.request.VerifyOtpRequest; 
 
 import jakarta.servlet.http.HttpServletRequest;
 
@@ -19,9 +25,11 @@ public interface AuthService {
     
     void activateUserAccount(String token);
     
+    UserSummaryResponse checkEmail(String email);
+    
     JwtResponse login(LoginRequest request, HttpServletRequest servletRequest);
     
-    JwtResponse loginWithGoogle(String idTokenString, HttpServletRequest servletRequest);
+    //JwtResponse loginWithGoogle(String idTokenString, HttpServletRequest servletRequest);
     
     JwtResponse refreshToken(String refreshToken);
     
@@ -44,4 +52,14 @@ public interface AuthService {
     JwtResponse loginWithMagicLink(String token, HttpServletRequest request);
     
     JwtResponse loginWithApple(AppleLoginRequest request, HttpServletRequest servletRequest);
+    
+    void sendOtpLogin(SendOtpRequest request);
+    
+    JwtResponse verifyOtpLogin(VerifyOtpRequest request, HttpServletRequest servletRequest);
+    
+    JwtResponse loginWithFacebook(FacebookLoginRequest request, HttpServletRequest servletRequest);
+
+	JwtResponse loginWithGoogle(GoogleLoginRequest request, HttpServletRequest servletRequest);
+	
+	JwtResponse loginWithTikTok(TikTokLoginRequest request, HttpServletRequest servletRequest);
 }

@@ -50,5 +50,7 @@
     <include file="changes/034-add-saved-streak.xml" relativeToChangelogFile="true"/>
     
     <include file="changes/035-create-payment-transactions.xml" relativeToChangelogFile="true"/>
+    <include file="changes/036-create-otp-tokens.xml" relativeToChangelogFile="true"/>
+    <include file="changes/037-update-user-schema.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

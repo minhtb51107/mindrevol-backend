@@ -2,6 +2,7 @@ package com.mindrevol.backend.modules.user.entity;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mindrevol.backend.common.entity.BaseEntity;
+import com.mindrevol.backend.modules.auth.entity.SocialAccount;
 
 import jakarta.persistence.*;
 import lombok.*;
@@ -68,6 +69,10 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 50)
     @Builder.Default
     private String timezone = "UTC"; // Mặc định là UTC
+    
+    @Enumerated(EnumType.STRING)
+    @Column(length = 20)
+    private Gender gender;
 
     @ManyToMany(fetch = FetchType.EAGER)
     @JoinTable(
@@ -85,6 +90,10 @@ public class User extends BaseEntity {
     @Column(name = "freeze_streak_count", columnDefinition = "int default 0")
     @Builder.Default
     private Integer freezeStreakCount = 0;
+    
+    @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private Set<SocialAccount> socialAccounts = new HashSet<>();
 
     @Version
     private Long version;

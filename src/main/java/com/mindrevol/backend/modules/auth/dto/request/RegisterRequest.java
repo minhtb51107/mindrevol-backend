@@ -6,6 +6,8 @@ import lombok.Setter;
 
 import java.time.LocalDate;
 
+import com.mindrevol.backend.modules.user.entity.Gender;
+
 @Getter
 @Setter
 public class RegisterRequest {
@@ -34,4 +36,7 @@ public class RegisterRequest {
     // --- MỚI: Bắt buộc đồng ý điều khoản ---
     @AssertTrue(message = "Bạn phải đồng ý với Điều khoản sử dụng và Chính sách quyền riêng tư")
     private boolean agreedToTerms;
+    
+    @NotNull(message = "Giới tính là bắt buộc")
+    private Gender gender;
 }
