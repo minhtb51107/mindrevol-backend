@@ -77,6 +77,11 @@ public class Journey {
     @Column(name = "interaction_type", nullable = false)
     @Builder.Default
     private InteractionType interactionType = InteractionType.GROUP_DISCUSS; 
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility", nullable = false)
+    @Builder.Default
+    private JourneyVisibility visibility = JourneyVisibility.PUBLIC;
 
     // --- MỚI: Template Fields ---
     @Column(name = "is_template", nullable = false)

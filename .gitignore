@@ -33,6 +33,7 @@ replay_pid*
 # Bỏ qua file cấu hình Firebase thật
 src/main/resources/firebase-service-account.json
 firebase-service-account.json
+src/main/resources/keystore.p12
 
 # Bỏ qua các file backup (bạn đã đổi tên file key thành .bak)
 *.bak

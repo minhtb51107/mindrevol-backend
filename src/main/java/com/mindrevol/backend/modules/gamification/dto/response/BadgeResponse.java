@@ -1,16 +1,28 @@
 package com.mindrevol.backend.modules.gamification.dto.response;
 
 import lombok.Builder;
-import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import java.time.LocalDateTime;
 
-@Data
+@Getter
+@Setter
 @Builder
 public class BadgeResponse {
     private Long id;
-    private String code;
+    
+    // --- Thêm field này để sửa lỗi .code() ---
+    private String code; 
+    
     private String name;
     private String description;
     private String iconUrl;
-    private LocalDateTime earnedAt;
+    private String conditionType;
+    private Integer requiredValue;
+    
+    private boolean isOwned;
+    
+    // --- Frontend dùng obtainedAt, Backend (UserBadge) có earnedAt ---
+    // Mapper sẽ lo việc chuyển đổi này, DTO giữ nguyên obtainedAt
+    private LocalDateTime obtainedAt; 
 }

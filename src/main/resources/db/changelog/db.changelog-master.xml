@@ -52,5 +52,9 @@
     <include file="changes/035-create-payment-transactions.xml" relativeToChangelogFile="true"/>
     <include file="changes/036-create-otp-tokens.xml" relativeToChangelogFile="true"/>
     <include file="changes/037-update-user-schema.xml" relativeToChangelogFile="true"/>
+    <include file="changes/038-add-journey-visibility.xml" relativeToChangelogFile="true"/>
+    <include file="changes/039-update-chat-schema.xml" relativeToChangelogFile="true"/>
+    <include file="changes/040-add-audit-to-messages.xml" relativeToChangelogFile="true"/>
+    <include file="changes/041-add-receiver-id-to-messages.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

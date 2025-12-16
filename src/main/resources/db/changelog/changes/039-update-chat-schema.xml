@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+
+    <changeSet id="039-update-chat-schema-v2" author="minh">
+        <addColumn tableName="conversations">
+            <column name="last_sender_id" type="BIGINT">
+                <constraints nullable="true"/>
+            </column>
+            
+            <column name="user1_last_read_msg_id" type="BIGINT">
+                <constraints nullable="true"/>
+            </column>
+            
+            <column name="user2_last_read_msg_id" type="BIGINT">
+                <constraints nullable="true"/>
+            </column>
+            
+            <column name="status" type="VARCHAR(20)" defaultValue="ACTIVE">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+
+        <addColumn tableName="messages">
+            <column name="client_side_id" type="VARCHAR(255)">
+                <constraints nullable="true"/>
+            </column>
+            
+            <column name="metadata" type="JSONB">
+                <constraints nullable="true"/>
+            </column>
+            
+            <column name="delivery_status" type="VARCHAR(20)" defaultValue="SENT">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="is_deleted" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="reply_to_msg_id" type="BIGINT">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <createIndex tableName="conversations" indexName="idx_last_message_at">
+            <column name="last_message_at"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

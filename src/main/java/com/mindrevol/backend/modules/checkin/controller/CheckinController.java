@@ -2,7 +2,7 @@ package com.mindrevol.backend.modules.checkin.controller;
 
 import java.util.UUID;
 
-import com.mindrevol.backend.modules.feed.service.FeedService; // <--- IMPORT MỚI
+import com.mindrevol.backend.modules.feed.service.FeedService;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -42,12 +42,12 @@ public class CheckinController {
 
     private final CheckinService checkinService;
     private final ReactionService reactionService;
-    private final FeedService feedService; // <--- INJECT FEED SERVICE
+    private final FeedService feedService;
 
     // API Post bài (Upload ảnh)
     @PostMapping(consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<ApiResponse<CheckinResponse>> createCheckin(
-            @ModelAttribute @Valid CheckinRequest request, // @ModelAttribute dùng cho form-data
+            @ModelAttribute @Valid CheckinRequest request, 
             @AuthenticationPrincipal User currentUser) {
         
         CheckinResponse response = checkinService.createCheckin(request, currentUser);
@@ -57,7 +57,7 @@ public class CheckinController {
     // API Lấy Feed (Grid) của 1 Journey
     @GetMapping("/journey/{journeyId}")
     public ResponseEntity<ApiResponse<Page<CheckinResponse>>> getJourneyFeed(
-            @PathVariable UUID journeyId,
+            @PathVariable("journeyId") UUID journeyId, // <--- Đã thêm ("journeyId")
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable,
             @AuthenticationPrincipal User currentUser) {
         
@@ -76,8 +76,8 @@ public class CheckinController {
     
     @PostMapping("/{checkinId}/comments")
     public ResponseEntity<ApiResponse<CommentResponse>> postComment(
-            @PathVariable UUID checkinId,
-            @RequestBody Map<String, String> body, // Client gửi JSON: { "content": "..." }
+            @PathVariable("checkinId") UUID checkinId, // <--- Đã thêm ("checkinId")
+            @RequestBody Map<String, String> body,
             @AuthenticationPrincipal User currentUser) {
         
         String content = body.get("content");
@@ -91,31 +91,30 @@ public class CheckinController {
 
     @GetMapping("/{checkinId}/comments")
     public ResponseEntity<ApiResponse<Page<CommentResponse>>> getComments(
-            @PathVariable UUID checkinId,
+            @PathVariable("checkinId") UUID checkinId, // <--- Đã thêm ("checkinId")
             @PageableDefault(size = 20) Pageable pageable) {
         
         Page<CommentResponse> response = checkinService.getComments(checkinId, pageable);
         return ResponseEntity.ok(ApiResponse.success(response));
     }
     
-    // --- 1. Lấy Feed Tổng Hợp (Home Feed) - SỬ DỤNG REDIS FEED ---
+    // --- 1. Lấy Feed Tổng Hợp (Home Feed) ---
     @GetMapping("/feed")
     public ResponseEntity<ApiResponse<List<CheckinResponse>>> getHomeFeed(
-            @RequestParam(defaultValue = "0") int page, // Đổi cursor thành page cho Redis List
-            @RequestParam(defaultValue = "10") int limit,
+            @RequestParam(value = "page", defaultValue = "0") int page,   // <--- Đã thêm value = "page"
+            @RequestParam(value = "limit", defaultValue = "10") int limit, // <--- Đã thêm value = "limit"
             @AuthenticationPrincipal User currentUser) {
         
-        // Gọi qua FeedService (Redis) thay vì CheckinService (DB)
         List<CheckinResponse> feed = feedService.getFeed(currentUser.getId(), page, limit);
         return ResponseEntity.ok(ApiResponse.success(feed));
     }
 
-    // 2. Lấy Feed Journey (Vẫn dùng DB Cursor vì Feed này ít khi scale lớn)
+    // 2. Lấy Feed Journey theo Cursor
     @GetMapping("/journey/{journeyId}/cursor")
     public ResponseEntity<ApiResponse<List<CheckinResponse>>> getJourneyFeedCursor(
-            @PathVariable UUID journeyId,
-            @RequestParam(required = false) LocalDateTime cursor,
-            @RequestParam(defaultValue = "10") int limit,
+            @PathVariable("journeyId") UUID journeyId, // <--- Đã thêm ("journeyId")
+            @RequestParam(value = "cursor", required = false) LocalDateTime cursor, // <--- Đã thêm value
+            @RequestParam(value = "limit", defaultValue = "10") int limit,          // <--- Đã thêm value
             @AuthenticationPrincipal User currentUser) {
         
         List<CheckinResponse> feed = checkinService.getJourneyFeedByCursor(journeyId, currentUser, cursor, limit);

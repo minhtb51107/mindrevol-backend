@@ -1,95 +1,82 @@
 package com.mindrevol.backend.modules.chat.service.impl;
 
-import java.time.LocalDateTime;
-import java.util.List;
-
+import com.mindrevol.backend.common.exception.BadRequestException;
+import com.mindrevol.backend.common.exception.ResourceNotFoundException;
+import com.mindrevol.backend.modules.chat.dto.event.MessageReadEvent;
+import com.mindrevol.backend.modules.chat.dto.request.SendMessageRequest;
+import com.mindrevol.backend.modules.chat.dto.response.ConversationResponse;
+import com.mindrevol.backend.modules.chat.dto.response.MessageResponse;
+import com.mindrevol.backend.modules.chat.entity.*;
+import com.mindrevol.backend.modules.chat.mapper.ChatMapper;
+import com.mindrevol.backend.modules.chat.repository.ConversationRepository;
+import com.mindrevol.backend.modules.chat.repository.MessageRepository;
+import com.mindrevol.backend.modules.chat.service.ChatService;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
+import com.mindrevol.backend.modules.user.entity.User;
+import com.mindrevol.backend.modules.user.repository.UserRepository;
+import com.mindrevol.backend.modules.user.service.UserBlockService;
+import com.mindrevol.backend.modules.user.service.UserPresenceService; // Import Presence Service
+import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import com.mindrevol.backend.common.exception.BadRequestException; // Import
-import com.mindrevol.backend.common.exception.ResourceNotFoundException;
-import com.mindrevol.backend.modules.chat.dto.event.MessageReadEvent;
-import com.mindrevol.backend.modules.chat.dto.request.SendMessageRequest;
-import com.mindrevol.backend.modules.chat.dto.response.MessageResponse;
-import com.mindrevol.backend.modules.chat.entity.Conversation;
-import com.mindrevol.backend.modules.chat.entity.Message;
-import com.mindrevol.backend.modules.chat.mapper.ChatMapper;
-import com.mindrevol.backend.modules.chat.repository.ConversationRepository;
-import com.mindrevol.backend.modules.chat.repository.MessageRepository;
-import com.mindrevol.backend.modules.chat.service.ChatService;
-import com.mindrevol.backend.modules.checkin.entity.Checkin;
-import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
-import com.mindrevol.backend.modules.user.entity.User;
-import com.mindrevol.backend.modules.user.repository.FriendshipRepository; // Import
-import com.mindrevol.backend.modules.user.repository.UserRepository;
-
-import lombok.RequiredArgsConstructor;
+import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
 public class ChatServiceImpl implements ChatService {
 
-    private final ConversationRepository conversationRepository;
     private final MessageRepository messageRepository;
+    private final ConversationRepository conversationRepository;
     private final UserRepository userRepository;
-    private final CheckinRepository checkinRepository;
-    private final SimpMessagingTemplate messagingTemplate;
     private final ChatMapper chatMapper;
-    
-    private final FriendshipRepository friendshipRepository; // <--- INJECT THÊM
+    private final SimpMessagingTemplate messagingTemplate;
+    private final UserBlockService userBlockService;
+    private final UserPresenceService userPresenceService; // Inject Service check online
 
     @Override
     @Transactional
-    public MessageResponse sendMessage(SendMessageRequest request, User sender) {
-        // 1. Tìm người nhận
-        User receiver = userRepository.findById(request.getReceiverId())
-                .orElseThrow(() -> new ResourceNotFoundException("Người nhận không tồn tại"));
+    public MessageResponse sendMessage(Long senderId, SendMessageRequest request) {
+        Long receiverId = request.getReceiverId();
 
-        // --- BẢO MẬT: CHẶN NGƯỜI LẠ ---
-        // Chỉ cho phép nhắn nếu đã là bạn bè (Status = ACCEPTED)
-        // Lưu ý: Nếu muốn cho phép nhắn tin chờ (Message Request) thì bỏ check này, 
-        // nhưng với mô hình Private Locket thì nên chặn luôn.
-        boolean isFriend = friendshipRepository.existsByUsers(sender.getId(), receiver.getId());
-        if (!isFriend) {
-            throw new BadRequestException("Bạn chỉ có thể nhắn tin cho bạn bè.");
-        }
-        // ------------------------------
-
-        // 2. Get or Create Conversation (Tối ưu Query)
-        Conversation conversation = getOrCreateConversation(sender, receiver);
-
-        // 3. Xử lý Reply Context
-        Checkin replyCheckin = null;
-        if (request.getReplyToCheckinId() != null) {
-            replyCheckin = checkinRepository.findById(request.getReplyToCheckinId()).orElse(null);
+        if (userBlockService.isBlocked(receiverId, senderId)) {
+            throw new BadRequestException("Bạn không thể gửi tin nhắn cho người này.");
         }
 
-        // 4. Lưu tin nhắn
+        Conversation conversation = conversationRepository.findConversationByUsers(senderId, receiverId)
+                .orElseGet(() -> createNewConversation(senderId, receiverId));
+
         Message message = Message.builder()
                 .conversation(conversation)
-                .sender(sender)
+                .senderId(senderId)
+                .receiverId(receiverId)
                 .content(request.getContent())
-                .type(request.getType())
-                .mediaUrl(request.getMediaUrl())
-                .replyToCheckin(replyCheckin)
-                .isRead(false)
+                .type(request.getType() != null ? request.getType() : MessageType.TEXT)
+                .metadata(request.getMetadata())
+                .clientSideId(request.getClientSideId())
+                .deliveryStatus(MessageDeliveryStatus.SENT)
                 .build();
+
         message = messageRepository.save(message);
 
-        // 5. Update Conversation
-        conversation.setLastMessageContent(getContentPreview(message));
+        // Update sorting inbox
+        String previewContent = message.getType() == MessageType.IMAGE ? "[Hình ảnh]" : message.getContent();
+        conversation.setLastMessageContent(previewContent);
         conversation.setLastMessageAt(LocalDateTime.now());
+        conversation.setLastSenderId(senderId);
+        
         conversationRepository.save(conversation);
 
-        // 6. Map Response
         MessageResponse response = chatMapper.toResponse(message);
 
-        // 7. Push Realtime
+        // Real-time push
         messagingTemplate.convertAndSendToUser(
-                receiver.getEmail(),
+                String.valueOf(receiverId),
                 "/queue/messages",
                 response
         );
@@ -97,81 +84,119 @@ public class ChatServiceImpl implements ChatService {
         return response;
     }
 
+    private Conversation createNewConversation(Long senderId, Long receiverId) {
+        User sender = userRepository.findById(senderId).orElseThrow();
+        User receiver = userRepository.findById(receiverId).orElseThrow();
+
+        Conversation conv = Conversation.builder()
+                .user1(sender)
+                .user2(receiver)
+                .lastMessageAt(LocalDateTime.now())
+                .build();
+        
+        return conversationRepository.save(conv);
+    }
+
+    // [FIX LỖI 500]: Thêm @Transactional(readOnly = true)
     @Override
-    public Page<MessageResponse> getConversationMessages(Long partnerId, User currentUser, Pageable pageable) {
-        // Tìm hội thoại theo ID đã sort
-        Long id1 = Math.min(currentUser.getId(), partnerId);
-        Long id2 = Math.max(currentUser.getId(), partnerId);
-        
-        Conversation conversation = conversationRepository.findBySortedIds(id1, id2)
-                .orElseThrow(() -> new ResourceNotFoundException("Chưa có cuộc trò chuyện"));
-        
-        return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversation.getId(), pageable)
+    @Transactional(readOnly = true)
+    public List<ConversationResponse> getUserConversations(Long userId) {
+        // 1. Lấy list từ DB
+        List<Conversation> conversations = conversationRepository.findByUser(userId);
+
+        // 2. Map sang DTO
+        return conversations.stream().map(conv -> {
+            // Xác định ai là Partner
+            User partnerEntity = conv.getUser1().getId().equals(userId) ? conv.getUser2() : conv.getUser1();
+            
+            // Lấy trạng thái Online thật từ Redis
+            boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
+
+            // [LỖI TRƯỚC ĐÂY]: partnerEntity.getFullname() gây lỗi LazyInit nếu không có Transactional
+            UserSummaryResponse partnerDto = UserSummaryResponse.builder()
+                .id(partnerEntity.getId())
+                .fullname(partnerEntity.getFullname())
+                .avatarUrl(partnerEntity.getAvatarUrl())
+                .handle(partnerEntity.getHandle())
+                .isOnline(isOnline)
+                .build();
+
+            long unread = messageRepository.countUnreadMessages(conv.getId(), userId);
+
+            return ConversationResponse.builder()
+                    .id(conv.getId())
+                    .partner(partnerDto)
+                    .lastMessageContent(conv.getLastMessageContent())
+                    .lastMessageAt(conv.getLastMessageAt())
+                    .lastSenderId(conv.getLastSenderId())
+                    .unreadCount(unread)
+                    .status(conv.getStatus() != null ? conv.getStatus().name() : "ACTIVE")
+                    .build();
+        }).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<MessageResponse> getConversationMessages(Long conversationId, Pageable pageable) {
+        return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 .map(chatMapper::toResponse);
     }
 
-    // --- HÀM MỚI: MARK AS READ ---
+    @Override
+    @Transactional(readOnly = true)
+    public Page<MessageResponse> getMessagesWithUser(Long currentUserId, Long partnerId, Pageable pageable) {
+        Conversation conversation = conversationRepository.findConversationByUsers(currentUserId, partnerId)
+                .orElseThrow(() -> new ResourceNotFoundException("Chưa có cuộc trò chuyện nào."));
+        
+        // Lưu ý: Không gọi hàm ghi (markRead) trong hàm đọc (readOnly) nếu không cần thiết
+        // Frontend sẽ gọi API markRead riêng
+        
+        return getConversationMessages(conversation.getId(), pageable);
+    }
+
     @Override
     @Transactional
-    public void markAsRead(Long partnerId, User currentUser) {
-        Long id1 = Math.min(currentUser.getId(), partnerId);
-        Long id2 = Math.max(currentUser.getId(), partnerId);
-
-        Conversation conversation = conversationRepository.findBySortedIds(id1, id2)
+    public void markConversationAsRead(Long conversationId, Long userId) {
+        Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Conversation not found"));
 
-        // 1. Update DB (Logic cũ)
-        List<Message> unreadMessages = messageRepository.findUnreadMessages(conversation.getId(), currentUser.getId());
-        if (unreadMessages.isEmpty()) {
-            return; // Không có gì mới để đánh dấu
+        Message lastMessage = messageRepository.findTopByConversationIdOrderByCreatedAtDesc(conversationId)
+                .orElse(null);
+
+        if (lastMessage != null) {
+            boolean updated = false;
+            // Cập nhật con trỏ đã đọc
+            if (conversation.getUser1().getId().equals(userId)) {
+                if (conversation.getUser1LastReadMessageId() == null || conversation.getUser1LastReadMessageId() < lastMessage.getId()) {
+                    conversation.setUser1LastReadMessageId(lastMessage.getId());
+                    updated = true;
+                }
+            } else if (conversation.getUser2().getId().equals(userId)) {
+                if (conversation.getUser2LastReadMessageId() == null || conversation.getUser2LastReadMessageId() < lastMessage.getId()) {
+                    conversation.setUser2LastReadMessageId(lastMessage.getId());
+                    updated = true;
+                }
+            }
+
+            if (updated) {
+                conversationRepository.save(conversation);
+                
+                // Gửi Socket báo "Đã xem" cho đối phương
+                Long partnerId = conversation.getUser1().getId().equals(userId) 
+                        ? conversation.getUser2().getId() 
+                        : conversation.getUser1().getId();
+                
+                messagingTemplate.convertAndSendToUser(
+                    String.valueOf(partnerId),
+                    "/queue/read-receipt",
+                    new MessageReadEvent(conversationId, lastMessage.getId(), userId)
+                );
+            }
         }
-
-        for (Message msg : unreadMessages) {
-            msg.setRead(true);
-        }
-        messageRepository.saveAll(unreadMessages);
-
-        // 2. --- LOGIC MỚI: BẮN SOCKET "ĐÃ XEM" ---
-        // Gửi sự kiện cho partner (người kia) biết là mình (currentUser) đã đọc
-        User partner = (conversation.getUser1().getId().equals(currentUser.getId())) 
-                        ? conversation.getUser2() 
-                        : conversation.getUser1();
-
-        MessageReadEvent event = MessageReadEvent.builder()
-                .conversationId(conversation.getId())
-                .readerId(currentUser.getId())
-                .partnerId(partner.getId())
-                .readAt(LocalDateTime.now().toString())
-                .build();
-
-        // Client của Partner sẽ subscribe: /user/queue/chat/read
-        messagingTemplate.convertAndSendToUser(
-                partner.getEmail(), 
-                "/queue/chat/read", 
-                event
-        );
     }
 
-    private Conversation getOrCreateConversation(User u1, User u2) {
-        // Luôn sắp xếp ID để đảm bảo tính duy nhất và khớp Index
-        User user1 = u1.getId() < u2.getId() ? u1 : u2;
-        User user2 = u1.getId() < u2.getId() ? u2 : u1;
-        
-        return conversationRepository.findBySortedIds(user1.getId(), user2.getId())
-                .orElseGet(() -> conversationRepository.save(Conversation.builder()
-                        .user1(user1)
-                        .user2(user2)
-                        .build()));
-    }
-
-    private String getContentPreview(Message msg) {
-        if (msg.getType() != null) {
-            return switch (msg.getType()) {
-                case IMAGE -> "[Hình ảnh]";
-                case VOICE -> "[Tin nhắn thoại]";
-                default -> msg.getContent();
-            };
-        }
-        return msg.getContent();
+    @Override
+    public Conversation getConversationById(Long id) {
+        return conversationRepository.findById(id).orElseThrow();
     }
 }

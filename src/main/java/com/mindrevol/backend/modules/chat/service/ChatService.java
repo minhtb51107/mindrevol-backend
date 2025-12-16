@@ -1,17 +1,22 @@
 package com.mindrevol.backend.modules.chat.service;
 
+import com.mindrevol.backend.modules.chat.dto.request.SendMessageRequest;
+import com.mindrevol.backend.modules.chat.dto.response.ConversationResponse;
+import com.mindrevol.backend.modules.chat.dto.response.MessageResponse;
+import com.mindrevol.backend.modules.chat.entity.Conversation;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
-import com.mindrevol.backend.modules.chat.dto.request.SendMessageRequest;
-import com.mindrevol.backend.modules.chat.dto.response.MessageResponse;
-import com.mindrevol.backend.modules.user.entity.User;
+import java.util.List;
 
 public interface ChatService {
-    MessageResponse sendMessage(SendMessageRequest request, User sender);
+    MessageResponse sendMessage(Long senderId, SendMessageRequest request);
     
-    Page<MessageResponse> getConversationMessages(Long partnerId, User currentUser, Pageable pageable);
+    // [UPDATE] Trả về ConversationResponse
+    List<ConversationResponse> getUserConversations(Long userId);
     
-    // Hàm mới
-    void markAsRead(Long partnerId, User currentUser);
+    Page<MessageResponse> getConversationMessages(Long conversationId, Pageable pageable);
+    Page<MessageResponse> getMessagesWithUser(Long currentUserId, Long partnerId, Pageable pageable);
+    void markConversationAsRead(Long conversationId, Long userId);
+    Conversation getConversationById(Long id);
 }

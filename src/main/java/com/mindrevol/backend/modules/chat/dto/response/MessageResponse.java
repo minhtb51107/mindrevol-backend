@@ -1,30 +1,38 @@
 package com.mindrevol.backend.modules.chat.dto.response;
 
+import com.mindrevol.backend.modules.chat.entity.MessageDeliveryStatus;
+import com.mindrevol.backend.modules.chat.entity.MessageType;
+import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 import java.time.LocalDateTime;
-import java.util.UUID;
-
-import com.mindrevol.backend.modules.chat.entity.MessageType;
+import java.util.Map;
 
 @Data
 @Builder
+@NoArgsConstructor
+@AllArgsConstructor
 public class MessageResponse {
     private Long id;
     private Long conversationId;
+    
+    // Chỉ trả về ID, Frontend tự lookup thông tin user (Tối ưu performance)
     private Long senderId;
-    private String senderName;
-    private String senderAvatar;
+    private Long receiverId;
     
     private String content;
     private MessageType type;
-    private String mediaUrl;
     
-    private boolean isRead;
+    // Chứa thông tin reply check-in, ảnh, sticker... (Locket logic nằm trong này)
+    private Map<String, Object> metadata;
+    
+    // ID tạm của client để xử lý Optimistic UI
+    private String clientSideId;
+    
+    // Trạng thái: SENT, DELIVERED, SEEN
+    private MessageDeliveryStatus deliveryStatus;
+    
     private LocalDateTime createdAt;
-
-    // Ngữ cảnh (Context)
-    private UUID replyToCheckinId;
-    private String replyToCheckinThumbnail; // Link ảnh nhỏ để hiện trong khung chat
 }

@@ -27,4 +27,11 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Modifying
     @Query(value = "DELETE FROM users WHERE id = :userId", nativeQuery = true)
     void hardDeleteUser(@Param("userId") Long userId);
+    
+    @Query("SELECT u FROM User u WHERE " +
+            "(LOWER(u.fullname) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(u.handle) LIKE LOWER(CONCAT('%', :query, '%')) OR " +
+            "LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%'))) " +
+            "AND u.deletedAt IS NULL")
+     List<User> searchUsers(@Param("query") String query);
 }

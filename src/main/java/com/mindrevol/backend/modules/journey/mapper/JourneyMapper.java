@@ -15,13 +15,23 @@ import java.time.OffsetDateTime;
 @Mapper(componentModel = "spring")
 public interface JourneyMapper {
 
-    @Mapping(target = "creatorId", source = "creator.id")
+	@Mapping(target = "creatorId", source = "creator.id")
     @Mapping(target = "creatorName", source = "creator.fullname")
     @Mapping(target = "creatorAvatar", source = "creator.avatarUrl")
     @Mapping(target = "participantCount", expression = "java(journey.getParticipants() != null ? journey.getParticipants().size() : 0)")
-    @Mapping(target = "isJoined", ignore = true)
-    @Mapping(target = "inviteUrl", ignore = true)
-    @Mapping(target = "qrCodeData", ignore = true)
+    
+    // Map các trường setting (Tên field giống nhau nên MapStruct tự hiểu, nhưng khai báo cho chắc)
+    @Mapping(target = "hasStreak", source = "hasStreak")
+    @Mapping(target = "requiresFreezeTicket", source = "requiresFreezeTicket")
+    @Mapping(target = "isHardcore", source = "hardcore") // Lưu ý: Getter của boolean isHardcore thường là isHardcore()
+    @Mapping(target = "requireApproval", source = "requireApproval")
+    @Mapping(target = "interactionType", source = "interactionType")
+    @Mapping(target = "visibility", source = "visibility")
+    
+	@Mapping(target = "role", ignore = true)
+    @Mapping(target = "isJoined", ignore = true)   // <--- THÊM DÒNG NÀY
+    @Mapping(target = "inviteUrl", ignore = true)  // <--- THÊM DÒNG NÀY
+    
     JourneyResponse toResponse(Journey journey);
 
     @Mapping(target = "journeyId", source = "journey.id")

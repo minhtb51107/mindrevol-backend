@@ -1,15 +1,17 @@
 package com.mindrevol.backend.modules.user.controller;
 
 import com.mindrevol.backend.common.dto.ApiResponse;
-import com.mindrevol.backend.common.utils.SecurityUtils; // Thêm import
+import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.user.dto.request.UpdateProfileRequest;
 import com.mindrevol.backend.modules.user.dto.response.UserDataExport;
 import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse; // Import
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 import org.springframework.http.ResponseEntity;
@@ -77,5 +79,13 @@ public class UserController {
         Long currentUserId = SecurityUtils.getCurrentUserId();
         UserDataExport data = userService.exportMyData(currentUserId);
         return ResponseEntity.ok(ApiResponse.success(data));
+    }
+    
+    @GetMapping("/search")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<ApiResponse<List<UserSummaryResponse>>> searchUsers(@RequestParam String query) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        List<UserSummaryResponse> results = userService.searchUsers(query, currentUserId);
+        return ResponseEntity.ok(ApiResponse.success(results));
     }
 }

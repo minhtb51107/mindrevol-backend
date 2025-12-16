@@ -2,6 +2,7 @@ package com.mindrevol.backend.modules.gamification.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "badges")
@@ -25,5 +26,7 @@ public class Badge {
     @Enumerated(EnumType.STRING)
     private BadgeConditionType conditionType;
 
-    private Integer conditionValue;
+    private Integer conditionValue; 
+
+    private LocalDateTime createdAt;
 }

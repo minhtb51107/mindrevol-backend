@@ -5,7 +5,7 @@ public class AppConstants {
     
     // Mỗi người chỉ được tạo tối đa 1 Hành trình Active
     // Lý do: Để họ trân trọng hành trình đó và tập trung. Muốn tạo thêm -> Mua Premium.
-    public static final int LIMIT_OWNED_JOURNEYS_FREE = 1;
+    public static final int LIMIT_OWNED_JOURNEYS_FREE = 3;
 
     // Mỗi nhóm chỉ tối đa 10 thành viên
     // Lý do: Nhóm nhỏ (Cluster) dễ quản lý và tương tác cao hơn. Muốn mở rộng -> Trưởng nhóm phải mua gói.

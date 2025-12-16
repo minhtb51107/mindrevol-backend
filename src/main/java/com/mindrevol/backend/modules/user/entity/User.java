@@ -8,8 +8,14 @@ import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.Where;
-
-import java.time.LocalDate; // <-- Nhớ import cái này
+// --- THÊM IMPORT NÀY ---
+import org.springframework.security.core.GrantedAuthority;
+import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
+import java.util.Collection;
+import java.util.stream.Collectors;
+// -----------------------
+import java.time.LocalDate;
 import java.util.HashSet;
 import java.util.Set;
 
@@ -25,7 +31,7 @@ import java.util.Set;
 })
 @SQLDelete(sql = "UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?")
 @Where(clause = "deleted_at IS NULL") 
-public class User extends BaseEntity {
+public class User extends BaseEntity implements UserDetails { // <--- [QUAN TRỌNG] implements UserDetails
 
     @Column(nullable = false, unique = true, length = 100)
     private String email;
@@ -45,10 +51,8 @@ public class User extends BaseEntity {
     @Column(nullable = false, length = 100)
     private String fullname;
     
-    // --- MỚI: Thêm ngày sinh ---
     @Column(name = "date_of_birth")
     private LocalDate dateOfBirth;
-    // --------------------------
 
     @Column(length = 500)
     private String avatarUrl;
@@ -68,7 +72,7 @@ public class User extends BaseEntity {
     
     @Column(nullable = false, length = 50)
     @Builder.Default
-    private String timezone = "UTC"; // Mặc định là UTC
+    private String timezone = "UTC"; 
     
     @Enumerated(EnumType.STRING)
     @Column(length = 20)
@@ -97,4 +101,30 @@ public class User extends BaseEntity {
 
     @Version
     private Long version;
+
+    // --- [MỚI] Override các method của UserDetails ---
+
+    @Override
+    public Collection<? extends GrantedAuthority> getAuthorities() {
+        return this.roles.stream()
+                .map(role -> new SimpleGrantedAuthority("ROLE_" + role.getName()))
+                .collect(Collectors.toSet());
+    }
+
+    @Override
+    public String getUsername() {
+        return this.email; // Spring Security dùng email làm username
+    }
+
+    @Override
+    public boolean isAccountNonExpired() { return true; }
+
+    @Override
+    public boolean isAccountNonLocked() { return true; } // Hoặc check status != BLOCKED
+
+    @Override
+    public boolean isCredentialsNonExpired() { return true; }
+
+    @Override
+    public boolean isEnabled() { return this.status == UserStatus.ACTIVE; }
 }

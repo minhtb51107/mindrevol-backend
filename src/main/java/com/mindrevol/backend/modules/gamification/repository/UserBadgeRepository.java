@@ -19,4 +19,6 @@ public interface UserBadgeRepository extends JpaRepository<UserBadge, UUID> {
     // --- QUERY MỚI: Lấy tất cả Badge ID user đã sở hữu (để check in-memory) ---
     @Query("SELECT ub.badge.id FROM UserBadge ub WHERE ub.user.id = :userId")
     Set<Long> findBadgeIdsByUserId(Long userId);
+    
+    List<UserBadge> findByUserId(Long userId);
 }

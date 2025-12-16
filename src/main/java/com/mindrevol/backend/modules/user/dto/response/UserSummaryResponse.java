@@ -1,5 +1,7 @@
 package com.mindrevol.backend.modules.user.dto.response;
 
+import java.time.LocalDateTime;
+
 import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
@@ -18,4 +20,8 @@ public class UserSummaryResponse {
     private String avatarUrl;
     
     private boolean isOnline;
+    
+    private LocalDateTime lastActiveAt;
+
+    private String friendshipStatus; 
 }

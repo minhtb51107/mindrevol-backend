@@ -10,18 +10,12 @@ import java.util.List;
 @Data
 @Builder
 public class UserDataExport {
-    // 1. Thông tin cá nhân
     private UserProfileResponse profile;
-    
-    // 2. Danh sách thói quen
     private List<HabitResponse> habits;
-    
-    // 3. Lịch sử bài đăng (Check-in)
     private List<CheckinResponse> checkins;
     
-    // 4. Danh sách bạn bè
-    private List<UserSummaryResponse> friends;
+    // [SỬA TẠI ĐÂY] Đổi từ UserSummaryResponse thành FriendshipResponse
+    private List<FriendshipResponse> friends; 
     
-    // 5. Huy hiệu đã đạt
-    private List<String> badges; // Lưu tên badge cho gọn
+    private List<String> badges;
 }

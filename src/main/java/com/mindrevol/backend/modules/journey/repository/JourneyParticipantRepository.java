@@ -18,8 +18,8 @@ import java.util.UUID;
 public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, UUID> {
 
     // 1. Tìm kiếm cơ bản
-    @Query("SELECT jp FROM JourneyParticipant jp JOIN FETCH jp.journey WHERE jp.user.id = :userId")
-    List<JourneyParticipant> findAllByUserId(Long userId);
+	@Query("SELECT jp FROM JourneyParticipant jp JOIN FETCH jp.journey WHERE jp.user.id = :userId")
+    List<JourneyParticipant> findAllByUserId(@Param("userId") Long userId);
 
     List<JourneyParticipant> findAllByJourneyId(UUID journeyId);
 

@@ -29,7 +29,6 @@ public class GamificationController {
         return ResponseEntity.ok(ApiResponse.success(null, "Đổi vé Nghỉ Phép thành công!"));
     }
 
-    // --- [MỚI] API Sửa chuỗi (Repair Streak) ---
     @PostMapping("/repair-streak")
     public ResponseEntity<ApiResponse<Void>> repairStreak(@RequestParam UUID journeyId) {
         User currentUser = userService.getUserById(SecurityUtils.getCurrentUserId());
@@ -40,7 +39,8 @@ public class GamificationController {
     @GetMapping("/badges")
     public ResponseEntity<ApiResponse<List<BadgeResponse>>> getMyBadges() {
         User currentUser = userService.getUserById(SecurityUtils.getCurrentUserId());
-        return ResponseEntity.ok(ApiResponse.success(gamificationService.getUserBadges(currentUser)));
+        // CẬP NHẬT: Gọi hàm mới lấy Full Badge kèm trạng thái
+        return ResponseEntity.ok(ApiResponse.success(gamificationService.getAllBadgesWithStatus(currentUser)));
     }
 
     @GetMapping("/points/history")

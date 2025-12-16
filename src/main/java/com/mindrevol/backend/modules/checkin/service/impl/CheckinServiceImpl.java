@@ -65,7 +65,7 @@ public class CheckinServiceImpl implements CheckinService {
     private final UserBlockRepository userBlockRepository; 
 
     @Override
-    @CacheEvict(value = "journey_widget", key = "#request.journeyId + '-' + #currentUser.id")
+    @CacheEvict(value = "journey_widget", key = "#p0.journeyId + '-' + #p1.id")
     @Transactional
     public CheckinResponse createCheckin(CheckinRequest request, User currentUser) {
         Journey journey = journeyRepository.findById(request.getJourneyId())

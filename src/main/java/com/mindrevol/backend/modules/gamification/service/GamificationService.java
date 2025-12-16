@@ -26,4 +26,7 @@ public interface GamificationService {
 
     // --- [MỚI] Sửa chuỗi (Trả tiền để khôi phục chuỗi đã mất) ---
     void repairStreak(UUID journeyId, User user);
+    
+ // Thêm dòng này vào interface
+    List<BadgeResponse> getAllBadgesWithStatus(User user);
 }

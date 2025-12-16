@@ -80,4 +80,8 @@ public interface CheckinRepository extends JpaRepository<Checkin, UUID> {
      List<Checkin> findMostLikedCheckins(@Param("journeyId") UUID journeyId, 
                                          @Param("userId") Long userId, 
                                          Pageable pageable);
+    
+ // Thêm query loại trừ danh sách chặn
+    @Query("SELECT c FROM Checkin c WHERE c.visibility = 'PUBLIC' AND c.user.id NOT IN :blockedUserIds ORDER BY c.createdAt DESC")
+    Page<Checkin> findAllFeedExcudingBlocked(List<Long> blockedUserIds, Pageable pageable);
 }

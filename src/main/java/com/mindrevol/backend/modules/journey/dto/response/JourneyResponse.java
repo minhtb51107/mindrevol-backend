@@ -1,7 +1,10 @@
 package com.mindrevol.backend.modules.journey.dto.response;
 
+import com.mindrevol.backend.modules.journey.entity.InteractionType;
+import com.mindrevol.backend.modules.journey.entity.JourneyRole;
 import com.mindrevol.backend.modules.journey.entity.JourneyStatus;
 import com.mindrevol.backend.modules.journey.entity.JourneyType;
+import com.mindrevol.backend.modules.journey.entity.JourneyVisibility;
 import lombok.Builder;
 import lombok.Data;
 
@@ -26,7 +29,17 @@ public class JourneyResponse {
     private String creatorAvatar;
     
     private int participantCount;
-    private boolean isJoined;
+    private boolean isJoined; // Cái này có thể tính toán sau
     private String inviteUrl;
-    private String qrCodeData;
+    
+    // --- THÊM CÁC TRƯỜNG NÀY ĐỂ FIX LỖI SETTING ---
+    private boolean hasStreak;
+    private boolean requiresFreezeTicket;
+    private boolean isHardcore;
+    private boolean requireApproval;
+    private InteractionType interactionType;
+    private JourneyVisibility visibility;
+    
+    // Thêm Role để Frontend biết là Owner hay Member
+    private JourneyRole role; 
 }

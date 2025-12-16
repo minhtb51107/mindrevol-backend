@@ -25,6 +25,10 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import com.mindrevol.backend.modules.gamification.entity.Badge;
+import com.mindrevol.backend.modules.gamification.entity.UserBadge;
+import java.util.Map;
+import java.util.function.Function;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
@@ -269,6 +273,36 @@ public class GamificationServiceImpl implements GamificationService {
         return pointHistoryRepository.findByUserIdOrderByCreatedAtDesc(user.getId())
                 .stream()
                 .map(gamificationMapper::toPointHistoryResponse)
+                .collect(Collectors.toList());
+    }
+    
+    @Override
+    @Transactional(readOnly = true)
+    public List<BadgeResponse> getAllBadgesWithStatus(User user) {
+        List<Badge> allBadges = badgeRepository.findAll();
+        List<UserBadge> userBadges = userBadgeRepository.findByUserId(user.getId());
+
+        // Map: BadgeID (Long) -> UserBadge
+        Map<Long, UserBadge> userBadgeMap = userBadges.stream()
+                .collect(Collectors.toMap(ub -> ub.getBadge().getId(), Function.identity()));
+
+        return allBadges.stream()
+                .map(badge -> {
+                    UserBadge owned = userBadgeMap.get(badge.getId());
+                    
+                    return BadgeResponse.builder()
+                            .id(badge.getId())
+                            .name(badge.getName())
+                            .description(badge.getDescription())
+                            .iconUrl(badge.getIconUrl())
+                            .conditionType(badge.getConditionType() != null ? badge.getConditionType().name() : "")
+                            // Sửa lỗi: Đảm bảo Badge.java đã có field conditionValue
+                            .requiredValue(badge.getConditionValue()) 
+                            .isOwned(owned != null)
+                            // Sửa lỗi: Dùng getEarnedAt() thay vì getCreatedAt()
+                            .obtainedAt(owned != null ? owned.getEarnedAt() : null) 
+                            .build();
+                })
                 .collect(Collectors.toList());
     }
 }

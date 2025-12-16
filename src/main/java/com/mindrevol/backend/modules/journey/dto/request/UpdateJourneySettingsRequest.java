@@ -12,4 +12,5 @@ public class UpdateJourneySettingsRequest {
     private Boolean hasStreak;
     private Boolean requiresFreezeTicket;
     private Boolean isHardcore;
+    private Boolean requireApproval; // <--- THÊM DÒNG NÀY
 }
