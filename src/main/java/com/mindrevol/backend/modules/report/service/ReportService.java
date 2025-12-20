@@ -106,7 +106,7 @@ public class ReportService {
             case USER -> userIdToBan = Long.parseLong(targetId);
             case CHECKIN -> checkinRepository.findById(UUID.fromString(targetId))
                     .ifPresent(c -> banUserById(c.getUser().getId()));
-            case COMMENT -> commentRepository.findById(Long.parseLong(targetId))
+            case COMMENT -> commentRepository.findById(UUID.fromString(targetId))
                     .ifPresent(c -> banUserById(c.getUser().getId()));
             // Journey thì thường ban Creator, nhưng logic phức tạp nên tạm bỏ qua
         }
@@ -135,7 +135,7 @@ public class ReportService {
                     }
                 }
                 case COMMENT -> {
-                    Long commentId = Long.parseLong(targetId);
+                	UUID commentId = UUID.fromString(targetId);
                     if (commentRepository.existsById(commentId)) {
                         commentRepository.deleteById(commentId);
                         log.info("Deleted Comment: {}", commentId);
@@ -157,7 +157,7 @@ public class ReportService {
             boolean exists = switch (type) {
                 case USER -> userRepository.existsById(Long.parseLong(id));
                 case CHECKIN -> checkinRepository.existsById(UUID.fromString(id));
-                case COMMENT -> commentRepository.existsById(Long.parseLong(id));
+                case COMMENT -> commentRepository.existsById(UUID.fromString(id));
                 case JOURNEY -> journeyRepository.existsById(UUID.fromString(id));
             };
 

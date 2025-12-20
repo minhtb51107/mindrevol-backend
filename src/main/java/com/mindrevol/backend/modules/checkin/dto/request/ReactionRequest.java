@@ -1,19 +1,12 @@
 package com.mindrevol.backend.modules.checkin.dto.request;
 
-import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
-
-import java.util.UUID;
-
-import com.mindrevol.backend.modules.checkin.entity.ReactionType;
 
 @Data
 public class ReactionRequest {
-    @NotNull(message = "ID bài check-in là bắt buộc")
-    private UUID checkinId;
+    @NotBlank(message = "Emoji là bắt buộc")
+    private String emoji; // Nhận chuỗi unicode (ví dụ: "❤️", "🤣", "🚀")
 
-    @NotNull(message = "Loại reaction là bắt buộc")
-    private ReactionType type;
-
-    private String mediaUrl;
+    private String mediaUrl; // Giữ nguyên field này của bạn
 }

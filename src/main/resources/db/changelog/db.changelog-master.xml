@@ -56,5 +56,6 @@
     <include file="changes/039-update-chat-schema.xml" relativeToChangelogFile="true"/>
     <include file="changes/040-add-audit-to-messages.xml" relativeToChangelogFile="true"/>
     <include file="changes/041-add-receiver-id-to-messages.xml" relativeToChangelogFile="true"/>
+    <include file="changes/042-update-reaction-to-emoji-string.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

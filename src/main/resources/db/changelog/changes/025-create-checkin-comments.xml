@@ -5,43 +5,46 @@
         xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
         http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
 
-    <changeSet id="025-create-checkin-comments-table" author="minh">
+    <changeSet id="025-create-checkin-comments-fix-uuid" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="checkin_comments"/>
+        </preConditions>
+        <dropTable tableName="checkin_comments"/>
+    </changeSet>
+
+    <changeSet id="025-create-checkin-comments-recreate" author="mindrevol">
         <createTable tableName="checkin_comments">
-            <column name="id" type="BIGINT" autoIncrement="true">
+            <column name="id" type="UUID">
                 <constraints primaryKey="true" nullable="false"/>
             </column>
-            
+
             <column name="checkin_id" type="UUID">
                 <constraints nullable="false"/>
             </column>
-            
+
             <column name="user_id" type="BIGINT">
                 <constraints nullable="false"/>
             </column>
-            
+
             <column name="content" type="TEXT">
                 <constraints nullable="false"/>
             </column>
+
+            <column name="created_at" type="DATETIME">
+                <constraints nullable="false"/>
+            </column>
             
-            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"/>
-            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"/>
-            <column name="created_by" type="VARCHAR(255)"/>
-            <column name="last_modified_by" type="VARCHAR(255)"/>
-            <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="updated_at" type="DATETIME"/>
+            <column name="deleted_at" type="DATETIME"/>
         </createTable>
 
         <addForeignKeyConstraint baseTableName="checkin_comments" baseColumnNames="checkin_id"
                                  referencedTableName="checkins" referencedColumnNames="id"
-                                 constraintName="fk_comment_checkin_new" onDelete="CASCADE"/>
+                                 constraintName="fk_checkin_comment_checkin"/>
 
         <addForeignKeyConstraint baseTableName="checkin_comments" baseColumnNames="user_id"
                                  referencedTableName="users" referencedColumnNames="id"
-                                 constraintName="fk_comment_user" onDelete="CASCADE"/>
-                                 
-        <createIndex tableName="checkin_comments" indexName="idx_comment_checkin">
-            <column name="checkin_id"/>
-            <column name="created_at"/>
-        </createIndex>
+                                 constraintName="fk_checkin_comment_user"/>
     </changeSet>
 
 </databaseChangeLog>

@@ -14,7 +14,7 @@ public class MemoryGridItem {
     private UUID checkinId;
     private String thumbnailUrl;
     private CheckinStatus status; // NORMAL, FAILED (Client làm xám), COMEBACK (Client làm sáng)
-    private Emotion emotion;      // Để hiện icon cảm xúc nhỏ
+    private String emotion;     // Để hiện icon cảm xúc nhỏ
     private LocalDateTime createdAt;
     private int reactionCount;    // Số lượng tim
 }

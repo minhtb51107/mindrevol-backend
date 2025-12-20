@@ -1,29 +1,28 @@
 package com.mindrevol.backend.modules.checkin.entity;
 
-import jakarta.persistence.*;
-import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.entity.JourneyTask;
 import com.mindrevol.backend.modules.user.entity.User;
+import jakarta.persistence.*;
+import lombok.*;
+import org.springframework.data.annotation.CreatedDate;
+import org.springframework.data.annotation.LastModifiedDate;
+import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
-@Table(name = "checkins", indexes = {
-        @Index(name = "idx_checkin_journey", columnList = "journey_id"),
-        @Index(name = "idx_checkin_user", columnList = "user_id")
-})
+@Table(name = "checkins")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@Builder // Quay lại dùng @Builder vì không còn kế thừa
 @EntityListeners(AuditingEntityListener.class)
-public class Checkin {
+public class Checkin { // Đã bỏ 'extends BaseEntity'
 
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
@@ -37,33 +36,46 @@ public class Checkin {
     @JoinColumn(name = "journey_id", nullable = false)
     private Journey journey;
 
-    @Column(name = "image_url", nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "task_id")
+    private JourneyTask task;
+
+    @Column(name = "image_url")
     private String imageUrl;
 
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private Emotion emotion;
-
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    private CheckinStatus status;
-
-    @Column(columnDefinition = "TEXT")
+    @Column(name = "caption", columnDefinition = "TEXT")
     private String caption;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
-    @Builder.Default
-    private CheckinVisibility visibility = CheckinVisibility.PUBLIC;
+    @Column(name = "emotion")
+    private String emotion;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "status")
+    private CheckinStatus status;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "visibility")
+    private CheckinVisibility visibility;
+
+    // Tự khai báo Audit fields để dùng LocalDateTime (khớp với Service)
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
-    
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "journey_task_id") // Có thể null nếu là Habit
-    private JourneyTask task;
+
+    @LastModifiedDate
+    @Column(name = "updated_at")
+    private LocalDateTime updatedAt;
+
+    // --- CÁC MỐI QUAN HỆ ---
+
+    @OneToMany(mappedBy = "checkin", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<CheckinComment> comments = new ArrayList<>();
+
+    @OneToMany(mappedBy = "checkin", cascade = CascadeType.ALL, orphanRemoval = true)
+    @Builder.Default
+    private List<CheckinReaction> reactions = new ArrayList<>();
 }

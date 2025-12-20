@@ -6,7 +6,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
 import com.mindrevol.backend.modules.checkin.entity.CheckinVisibility;
-import com.mindrevol.backend.modules.checkin.entity.Emotion;
+//import com.mindrevol.backend.modules.checkin.entity.Emotion;
 
 import java.util.UUID;
 
@@ -19,7 +19,7 @@ public class CheckinRequest {
     private MultipartFile file; // File ảnh từ Client gửi lên
 
     @NotNull(message = "Cảm xúc là bắt buộc")
-    private Emotion emotion;
+    private String emotion;
 
     private String caption;
     

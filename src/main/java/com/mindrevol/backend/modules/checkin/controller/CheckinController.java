@@ -19,8 +19,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import com.mindrevol.backend.common.dto.ApiResponse;
+import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.request.ReactionRequest;
+import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
@@ -65,13 +67,23 @@ public class CheckinController {
         return ResponseEntity.ok(ApiResponse.success(response));
     }
     
-    @PostMapping("/reaction")
+    @PostMapping("/{id}/reactions")
     public ResponseEntity<ApiResponse<Void>> toggleReaction(
-            @RequestBody @Valid ReactionRequest request,
-            @AuthenticationPrincipal User currentUser) {
+            @PathVariable UUID id,
+            @Valid @RequestBody ReactionRequest request) { // Request đã sửa ở Bước 3
         
-        reactionService.toggleReaction(request, currentUser);
-        return ResponseEntity.ok(ApiResponse.success("Success"));
+        Long userId = SecurityUtils.getCurrentUserId();
+        // Lưu ý: request.getCheckinId() trong DTO có thể dư thừa nếu dùng @PathVariable, 
+        // nhưng nếu bạn muốn giữ DTO cũ thì dùng id từ path cho chắc chắn.
+        reactionService.toggleReaction(id, userId, request.getEmoji(), request.getMediaUrl());
+        
+        return ResponseEntity.ok(ApiResponse.success(null, "Tương tác thành công"));
+    }
+
+    // THÊM: API Lấy danh sách reactions (Cho Activity Modal)
+    @GetMapping("/{id}/reactions")
+    public ResponseEntity<ApiResponse<List<CheckinReactionDetailResponse>>> getReactions(@PathVariable UUID id) {
+        return ResponseEntity.ok(ApiResponse.success(reactionService.getReactions(id)));
     }
     
     @PostMapping("/{checkinId}/comments")

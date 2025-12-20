@@ -5,6 +5,7 @@ import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
+import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
@@ -15,6 +16,7 @@ import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
+import com.mindrevol.backend.modules.checkin.service.ReactionService;
 import com.mindrevol.backend.modules.journey.entity.InteractionType;
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.entity.JourneyParticipant;
@@ -63,6 +65,14 @@ public class CheckinServiceImpl implements CheckinService {
     private final CheckinCommentRepository commentRepository;
     private final ApplicationEventPublisher eventPublisher;
     private final UserBlockRepository userBlockRepository; 
+    
+    private final ReactionService reactionService; 
+
+    private CheckinResponse enrichResponse(CheckinResponse response) {
+        List<CheckinReactionDetailResponse> previews = reactionService.getPreviewReactions(response.getId());
+        response.setLatestReactions(previews);
+        return response;
+    }
 
     @Override
     @CacheEvict(value = "journey_widget", key = "#p0.journeyId + '-' + #p1.id")
@@ -74,7 +84,6 @@ public class CheckinServiceImpl implements CheckinService {
         JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journey.getId(), currentUser.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên"));
 
-        // --- TIMEZONE LOGIC ---
         String tz = currentUser.getTimezone() != null ? currentUser.getTimezone() : "UTC";
         ZoneId userZone;
         try {
@@ -83,9 +92,7 @@ public class CheckinServiceImpl implements CheckinService {
             userZone = ZoneId.of("UTC");
         }
         LocalDate todayLocal = LocalDate.now(userZone);
-        // ----------------------
 
-        // Validate: Mỗi ngày chỉ check-in 1 lần (nếu hành trình có tính streak)
         if (journey.isHasStreak()) {
             if (participant.getLastCheckinAt() != null && participant.getLastCheckinAt().isEqual(todayLocal)) {
                 throw new BadRequestException("Hôm nay bạn đã check-in rồi! Hãy quay lại vào ngày mai.");
@@ -125,7 +132,6 @@ public class CheckinServiceImpl implements CheckinService {
 
         CheckinStatus finalStatus;
 
-        // Logic dùng vé đóng băng
         if (request.getStatusRequest() == CheckinStatus.REST) {
             if (journey.isRequiresFreezeTicket()) {
                 if (currentUser.getFreezeStreakCount() <= 0) {
@@ -136,9 +142,6 @@ public class CheckinServiceImpl implements CheckinService {
             }
             finalStatus = CheckinStatus.REST;
         } else {
-            // --- SỬA ĐỔI QUAN TRỌNG: TRUST BUT VERIFY ---
-            // Luôn tính toán trạng thái tích cực (NORMAL/COMEBACK) ngay lập tức
-            // Bỏ qua logic set PENDING_VERIFICATION để tránh trải nghiệm bị khựng
             finalStatus = determineStatus(participant, todayLocal);
         }
 
@@ -157,10 +160,8 @@ public class CheckinServiceImpl implements CheckinService {
 
         checkin = checkinRepository.save(checkin);
         
-        // Cập nhật streak ngay lập tức (Vì mình tin user trước)
         updateParticipantStats(participant, finalStatus, todayLocal);
 
-        // Bắn event để GamificationService cộng điểm ngay
         eventPublisher.publishEvent(new CheckinSuccessEvent(
                 checkin.getId(),
                 currentUser.getId(),
@@ -199,13 +200,17 @@ public class CheckinServiceImpl implements CheckinService {
         participantRepository.save(participant);
     }
 
+    // --- CÁC HÀM GET FEED: ĐÃ THÊM @Transactional(readOnly = true) ---
+
     @Override
+    @Transactional(readOnly = true) // Fix LazyInitializationException
     public Page<CheckinResponse> getJourneyFeed(UUID journeyId, Pageable pageable, User currentUser) {
         if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
             throw new BadRequestException("Không có quyền xem");
         }
         return checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journeyId, pageable)
-                .map(checkinMapper::toResponse);
+                .map(checkinMapper::toResponse)
+                .map(this::enrichResponse); 
     }
 
     @Override
@@ -230,12 +235,14 @@ public class CheckinServiceImpl implements CheckinService {
     }
 
     @Override
+    @Transactional(readOnly = true) // Fix LazyInitializationException cho User trong comment
     public Page<CommentResponse> getComments(UUID checkinId, Pageable pageable) {
         return commentRepository.findByCheckinId(checkinId, SecurityUtils.getCurrentUserId(), pageable)
                 .map(checkinMapper::toCommentResponse);
     }
 
     @Override
+    @Transactional(readOnly = true) // Fix LazyInitializationException
     public List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit) {
         if (cursor == null) cursor = LocalDateTime.now();
         Pageable pageable = PageRequest.of(0, limit);
@@ -244,10 +251,12 @@ public class CheckinServiceImpl implements CheckinService {
         return checkinRepository.findUnifiedFeed(currentUser.getId(), cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
+                .map(this::enrichResponse)
                 .collect(Collectors.toList());
     }
 
     @Override
+    @Transactional(readOnly = true) // Fix LazyInitializationException
     public List<CheckinResponse> getJourneyFeedByCursor(UUID journeyId, User currentUser, LocalDateTime cursor, int limit) {
         if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
             throw new BadRequestException("Bạn không có quyền xem hành trình này");
@@ -259,6 +268,7 @@ public class CheckinServiceImpl implements CheckinService {
         return checkinRepository.findJourneyFeedByCursor(journeyId, cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
+                .map(this::enrichResponse)
                 .collect(Collectors.toList());
     }
 
