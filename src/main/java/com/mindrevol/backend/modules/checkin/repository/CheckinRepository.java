@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collection;
 import java.util.List;
@@ -24,6 +25,8 @@ public interface CheckinRepository extends JpaRepository<Checkin, UUID> {
     Page<Checkin> findByJourneyIdOrderByCreatedAtDesc(@Param("journeyId") UUID journeyId, Pageable pageable);
 
     Optional<Checkin> findTopByJourneyIdAndUserIdOrderByCreatedAtDesc(UUID journeyId, Long userId);
+    
+    List<Checkin> findByJourneyIdOrderByCheckinDateDesc(UUID journeyId);
 
     boolean existsByUserIdAndTaskId(Long userId, UUID taskId);
 
@@ -84,4 +87,21 @@ public interface CheckinRepository extends JpaRepository<Checkin, UUID> {
  // Thêm query loại trừ danh sách chặn
     @Query("SELECT c FROM Checkin c WHERE c.visibility = 'PUBLIC' AND c.user.id NOT IN :blockedUserIds ORDER BY c.createdAt DESC")
     Page<Checkin> findAllFeedExcudingBlocked(List<Long> blockedUserIds, Pageable pageable);
+    
+    @Query("SELECT c.createdAt FROM Checkin c " +
+            "WHERE c.journey.id = :journeyId " +
+            "AND c.user.id = :userId " +
+            "AND c.status IN ('NORMAL', 'LATE', 'COMEBACK', 'REST') " + // Chỉ lấy các trạng thái tính là "có mặt"
+            "ORDER BY c.createdAt DESC")
+     List<LocalDateTime> findValidCheckinDates(@Param("journeyId") UUID journeyId, @Param("userId") Long userId);
+    
+    @Query("SELECT c FROM Checkin c WHERE c.journey.id = :journeyId AND c.user.id = :userId ORDER BY c.createdAt DESC")
+    Page<Checkin> findMyCheckinsInJourney(@Param("journeyId") UUID journeyId, 
+                                          @Param("userId") Long userId, 
+                                          Pageable pageable);
+    
+    @Query("SELECT c FROM Checkin c JOIN FETCH c.user WHERE c.journey.id = :journeyId AND c.checkinDate = :date")
+    List<Checkin> findAllByJourneyIdAndCheckinDate(@Param("journeyId") UUID journeyId, @Param("date") LocalDate date);
+    
+    List<Checkin> findByJourneyIdAndUserIdOrderByCheckinDateDesc(UUID journeyId, Long userId);
 }

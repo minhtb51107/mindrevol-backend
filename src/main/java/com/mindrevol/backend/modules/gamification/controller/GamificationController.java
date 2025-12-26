@@ -8,6 +8,8 @@ import com.mindrevol.backend.modules.gamification.service.GamificationService;
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.service.UserService;
 import lombok.RequiredArgsConstructor;
+
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,6 +19,7 @@ import java.util.UUID;
 @RestController
 @RequestMapping("/api/v1/gamification")
 @RequiredArgsConstructor
+@ConditionalOnProperty(name = "app.gamification.enabled", havingValue = "true")
 public class GamificationController {
 
     private final GamificationService gamificationService;

@@ -7,4 +7,5 @@ public enum CheckinStatus {
     REST,                   // Nghỉ phép
     PENDING_VERIFICATION,   // MỚI: Đang chờ cộng đồng vote
     REJECTED                // MỚI: Bị cộng đồng từ chối (Ảnh fake)
+, PENDING
 }

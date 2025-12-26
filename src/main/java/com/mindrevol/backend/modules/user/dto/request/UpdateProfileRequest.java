@@ -1,9 +1,12 @@
 package com.mindrevol.backend.modules.user.dto.request;
 
+import com.mindrevol.backend.modules.user.entity.Gender;
+import jakarta.validation.constraints.Past;
 import jakarta.validation.constraints.Pattern;
 import jakarta.validation.constraints.Size;
 import lombok.Getter;
 import lombok.Setter;
+import java.time.LocalDate;
 
 @Getter
 @Setter
@@ -25,4 +28,10 @@ public class UpdateProfileRequest {
     private String avatarUrl;
     
     private String timezone;
+
+    // --- Bổ sung ---
+    @Past(message = "Ngày sinh không hợp lệ")
+    private LocalDate dateOfBirth;
+
+    private Gender gender;
 }

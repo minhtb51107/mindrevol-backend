@@ -27,4 +27,10 @@ public interface CheckinService {
 
     List<CheckinResponse> getJourneyFeedByCursor(UUID journeyId, User currentUser, LocalDateTime cursor, int limit);
     // ------------------------
+    
+ // [MỚI] Sửa caption
+    CheckinResponse updateCheckin(UUID checkinId, String caption, User currentUser);
+
+    // [MỚI] Xóa checkin
+    void deleteCheckin(UUID checkinId, User currentUser);
 }

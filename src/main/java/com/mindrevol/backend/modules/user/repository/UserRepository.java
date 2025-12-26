@@ -34,4 +34,12 @@ public interface UserRepository extends JpaRepository<User, Long> {
             "LOWER(u.email) LIKE LOWER(CONCAT('%', :query, '%'))) " +
             "AND u.deletedAt IS NULL")
      List<User> searchUsers(@Param("query") String query);
+    
+    @Modifying
+    @Query("UPDATE User u SET u.points = u.points + :amount WHERE u.id = :userId")
+    void incrementPoints(@Param("userId") Long userId, @Param("amount") int amount);
+
+    @Modifying
+    @Query("UPDATE User u SET u.points = u.points - :amount WHERE u.id = :userId AND u.points >= :amount")
+    int decrementPoints(@Param("userId") Long userId, @Param("amount") int amount);
 }

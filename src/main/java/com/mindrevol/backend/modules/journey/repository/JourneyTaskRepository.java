@@ -12,4 +12,6 @@ public interface JourneyTaskRepository extends JpaRepository<JourneyTask, UUID> 
     
     // Tìm nhiệm vụ của một ngày cụ thể trong hành trình
     Optional<JourneyTask> findByJourneyIdAndDayNo(UUID journeyId, Integer dayNo);
+
+	Optional<JourneyTask> findFirstByJourneyIdAndDayNoLessThanOrderByDayNoDesc(UUID id, Integer dayNo);
 }

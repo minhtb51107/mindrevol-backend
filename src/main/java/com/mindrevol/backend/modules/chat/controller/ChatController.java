@@ -53,4 +53,12 @@ public class ChatController {
         chatService.markConversationAsRead(conversationId, userId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
+    
+    @PostMapping("/conversations/init/{receiverId}")
+    public ResponseEntity<ApiResponse<ConversationResponse>> getOrCreateConversation(
+            @PathVariable Long receiverId) {
+        Long senderId = SecurityUtils.getCurrentUserId();
+        ConversationResponse response = chatService.getOrCreateConversation(senderId, receiverId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
 }

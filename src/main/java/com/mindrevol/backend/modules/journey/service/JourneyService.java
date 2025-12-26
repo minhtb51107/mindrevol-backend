@@ -40,4 +40,10 @@ public interface JourneyService {
     List<JourneyParticipantResponse> getJourneyParticipants(UUID journeyId);
     
     void deleteJourney(UUID journeyId, Long userId);
+
+	List<JourneyRequestResponse> getPendingRequests(UUID journeyId, Long userId);
+
+	List<UserActiveJourneyResponse> getUserActiveJourneys(Long targetUserId, Long currentUserId);
+
+	List<UserActiveJourneyResponse> getUserFinishedJourneys(Long targetUserId, Long currentUserId);
 }

@@ -10,8 +10,10 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.ModelAttribute;
+import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -131,5 +133,26 @@ public class CheckinController {
         
         List<CheckinResponse> feed = checkinService.getJourneyFeedByCursor(journeyId, currentUser, cursor, limit);
         return ResponseEntity.ok(ApiResponse.success(feed));
+    }
+    
+    @PatchMapping("/{id}")
+    public ResponseEntity<ApiResponse<CheckinResponse>> updateCheckin(
+            @PathVariable UUID id,
+            @RequestBody Map<String, String> body,
+            @AuthenticationPrincipal User currentUser) {
+        
+        String caption = body.get("caption");
+        // Gọi service update (bạn tự implement update đơn giản chỉ setCaption và save)
+        CheckinResponse response = checkinService.updateCheckin(id, caption, currentUser);
+        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật thành công"));
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteCheckin(
+            @PathVariable UUID id,
+            @AuthenticationPrincipal User currentUser) {
+        
+        checkinService.deleteCheckin(id, currentUser);
+        return ResponseEntity.ok(ApiResponse.success(null, "Đã xóa bài viết"));
     }
 }

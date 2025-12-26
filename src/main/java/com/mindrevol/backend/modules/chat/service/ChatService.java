@@ -19,4 +19,6 @@ public interface ChatService {
     Page<MessageResponse> getMessagesWithUser(Long currentUserId, Long partnerId, Pageable pageable);
     void markConversationAsRead(Long conversationId, Long userId);
     Conversation getConversationById(Long id);
+
+	ConversationResponse getOrCreateConversation(Long senderId, Long receiverId);
 }

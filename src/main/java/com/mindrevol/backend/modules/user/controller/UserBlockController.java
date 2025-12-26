@@ -2,38 +2,48 @@ package com.mindrevol.backend.modules.user.controller;
 
 import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.common.utils.SecurityUtils;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 import com.mindrevol.backend.modules.user.service.UserBlockService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
+
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/v1/users")
 @RequiredArgsConstructor
+@Tag(name = "User Block", description = "Quản lý chặn người dùng")
 public class UserBlockController {
 
     private final UserBlockService userBlockService;
 
-    @PostMapping("/{userId}/block")
-    public ResponseEntity<ApiResponse<Void>> blockUser(@PathVariable Long userId) {
+    @PostMapping("/blocks/{targetId}")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Chặn người dùng")
+    public ResponseEntity<ApiResponse<Void>> blockUser(@PathVariable Long targetId) {
         Long currentUserId = SecurityUtils.getCurrentUserId();
-        userBlockService.blockUser(currentUserId, userId);
-        return ResponseEntity.ok(ApiResponse.success(null, "Đã chặn người dùng"));
+        userBlockService.blockUser(currentUserId, targetId);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    @DeleteMapping("/{userId}/block")
-    public ResponseEntity<ApiResponse<Void>> unblockUser(@PathVariable Long userId) {
+    @DeleteMapping("/blocks/{targetId}")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Bỏ chặn người dùng")
+    public ResponseEntity<ApiResponse<Void>> unblockUser(@PathVariable Long targetId) {
         Long currentUserId = SecurityUtils.getCurrentUserId();
-        userBlockService.unblockUser(currentUserId, userId);
-        return ResponseEntity.ok(ApiResponse.success(null, "Đã bỏ chặn người dùng"));
+        userBlockService.unblockUser(currentUserId, targetId);
+        return ResponseEntity.ok(ApiResponse.success(null));
     }
-    
-    @GetMapping("/blocked")
-    public ResponseEntity<ApiResponse<List<UserSummaryResponse>>> getBlockedUsers() {
-        Long currentUserId = SecurityUtils.getCurrentUserId();
-        List<UserSummaryResponse> blockedUsers = userBlockService.getBlockedUsers(currentUserId);
-        return ResponseEntity.ok(ApiResponse.success(blockedUsers));
+
+    @GetMapping("/me/blocks")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Lấy danh sách chặn")
+    public ResponseEntity<ApiResponse<List<UserSummaryResponse>>> getBlockList() {
+        Long userId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.success(userBlockService.getBlockList(userId)));
     }
 }

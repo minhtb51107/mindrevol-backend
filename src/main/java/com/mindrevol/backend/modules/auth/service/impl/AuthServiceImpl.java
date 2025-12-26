@@ -534,4 +534,26 @@ public class AuthServiceImpl implements AuthService {
         EmailTask task = EmailTask.builder().toEmail(user.getEmail()).subject("Welcome").content(content).retryCount(0).build();
         asyncTaskProducer.submitEmailTask(task);
     }
+    
+    @Override
+    public boolean hasPassword(String email) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        // Nếu AuthProvider là LOCAL thì chắc chắn có password
+        // Nếu là Google/Facebook... thì mặc định ban đầu là chưa có password (password rác)
+        return "LOCAL".equals(user.getAuthProvider());
+    }
+
+    @Override
+    public void createPassword(CreatePasswordRequest request, String email) {
+        User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        
+        // Cập nhật mật khẩu mới
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        
+        // Chuyển trạng thái thành LOCAL để hệ thống nhận diện là User này đã có password
+        // Điều này cho phép họ sử dụng cả đăng nhập Google VÀ đăng nhập bằng Mật khẩu
+        user.setAuthProvider("LOCAL"); 
+        
+        userRepository.save(user);
+    }
 }

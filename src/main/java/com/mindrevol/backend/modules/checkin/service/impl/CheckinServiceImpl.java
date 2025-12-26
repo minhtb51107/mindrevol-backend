@@ -42,7 +42,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
-import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -68,6 +67,15 @@ public class CheckinServiceImpl implements CheckinService {
     
     private final ReactionService reactionService; 
 
+    // --- HELPER: Lấy danh sách ID chặn (để lọc query) ---
+    private Set<Long> getExcludedUserIds(Long userId) {
+        // Lấy danh sách: người mình chặn + người chặn mình
+        Set<Long> blockedIds = userBlockRepository.findAllBlockedUserIdsInteraction(userId);
+        // [QUAN TRỌNG] Luôn thêm -1L vào set để tránh lỗi SQL "NOT IN (empty)"
+        blockedIds.add(-1L); 
+        return blockedIds;
+    }
+
     private CheckinResponse enrichResponse(CheckinResponse response) {
         List<CheckinReactionDetailResponse> previews = reactionService.getPreviewReactions(response.getId());
         response.setLatestReactions(previews);
@@ -92,6 +100,11 @@ public class CheckinServiceImpl implements CheckinService {
             userZone = ZoneId.of("UTC");
         }
         LocalDate todayLocal = LocalDate.now(userZone);
+
+        // --- Kiểm tra ngày kết thúc của hành trình ---
+        if (journey.getEndDate() != null && todayLocal.isAfter(journey.getEndDate())) {
+            throw new BadRequestException("Hành trình này đã kết thúc vào ngày " + journey.getEndDate() + ". Bạn không thể check-in thêm.");
+        }
 
         if (journey.isHasStreak()) {
             if (participant.getLastCheckinAt() != null && participant.getLastCheckinAt().isEqual(todayLocal)) {
@@ -127,11 +140,22 @@ public class CheckinServiceImpl implements CheckinService {
                 if (checkinRepository.existsByUserIdAndTaskId(currentUser.getId(), task.getId())) {
                     throw new BadRequestException("Bạn đã hoàn thành nhiệm vụ này rồi!");
                 }
+
+                // --- Kiểm tra thứ tự nhiệm vụ (Không cho làm tắt) ---
+                Optional<JourneyTask> prevTaskOpt = journeyTaskRepository
+                    .findFirstByJourneyIdAndDayNoLessThanOrderByDayNoDesc(journey.getId(), task.getDayNo());
+                
+                if (prevTaskOpt.isPresent()) {
+                    JourneyTask prevTask = prevTaskOpt.get();
+                    boolean isPrevDone = checkinRepository.existsByUserIdAndTaskId(currentUser.getId(), prevTask.getId());
+                    if (!isPrevDone) {
+                        throw new BadRequestException("Vui lòng hoàn thành nhiệm vụ ngày " + prevTask.getDayNo() + " trước!");
+                    }
+                }
             }
         }
 
         CheckinStatus finalStatus;
-
         if (request.getStatusRequest() == CheckinStatus.REST) {
             if (journey.isRequiresFreezeTicket()) {
                 if (currentUser.getFreezeStreakCount() <= 0) {
@@ -142,7 +166,18 @@ public class CheckinServiceImpl implements CheckinService {
             }
             finalStatus = CheckinStatus.REST;
         } else {
-            finalStatus = determineStatus(participant, todayLocal);
+            // Logic ưu tiên Status từ Client gửi lên (tránh lỗi COMPLETE/COMEBACK sai)
+            if (request.getStatusRequest() != null && request.getStatusRequest() != CheckinStatus.NORMAL) {
+                 finalStatus = request.getStatusRequest();
+            } else {
+                 finalStatus = determineStatus(participant, todayLocal);
+            }
+        }
+
+        // --- Xử lý trạng thái PENDING nếu cần xác thực ---
+        CheckinStatus initialStatus = finalStatus;
+        if (finalStatus != CheckinStatus.REST && journey.isRequiresVerification()) {
+            initialStatus = CheckinStatus.PENDING;
         }
 
         Checkin checkin = Checkin.builder()
@@ -152,22 +187,27 @@ public class CheckinServiceImpl implements CheckinService {
                 .imageUrl(imageUrl)
                 .thumbnailUrl(imageUrl)
                 .emotion(request.getEmotion())
-                .status(finalStatus)
+                .status(initialStatus) // Lưu status thực tế (có thể là PENDING)
                 .caption(request.getCaption())
                 .visibility(request.getVisibility()) 
-                .createdAt(LocalDateTime.now()) 
+                .createdAt(LocalDateTime.now())
+                .checkinDate(todayLocal) // [FIX LỖI QUAN TRỌNG]: Thêm trường này để tránh lỗi NOT NULL
                 .build();
 
         checkin = checkinRepository.save(checkin);
         
+        // Cập nhật stats (Streak, LastCheckin)
         updateParticipantStats(participant, finalStatus, todayLocal);
 
-        eventPublisher.publishEvent(new CheckinSuccessEvent(
-                checkin.getId(),
-                currentUser.getId(),
-                journey.getId(),
-                checkin.getCreatedAt()
-        ));
+        // Chỉ bắn sự kiện tính điểm/thông báo nếu KHÔNG phải chờ duyệt
+        if (initialStatus != CheckinStatus.PENDING) {
+            eventPublisher.publishEvent(new CheckinSuccessEvent(
+                    checkin.getId(),
+                    currentUser.getId(),
+                    journey.getId(),
+                    checkin.getCreatedAt()
+            ));
+        }
 
         return checkinMapper.toResponse(checkin);
     }
@@ -176,10 +216,10 @@ public class CheckinServiceImpl implements CheckinService {
         if (participant.getLastCheckinAt() == null) {
             return CheckinStatus.NORMAL;
         }
-
         LocalDate lastCheckin = participant.getLastCheckinAt();
         long daysGap = java.time.temporal.ChronoUnit.DAYS.between(lastCheckin, todayLocal);
-
+        
+        // Gap > 1 nghĩa là đã bỏ lỡ ít nhất 1 ngày -> COMEBACK (Reset streak)
         if (daysGap > 1) {
             return CheckinStatus.COMEBACK;
         }
@@ -189,60 +229,35 @@ public class CheckinServiceImpl implements CheckinService {
     private void updateParticipantStats(JourneyParticipant participant, CheckinStatus status, LocalDate todayLocal) {
         if (status == CheckinStatus.REST) {
             participant.setLastCheckinAt(todayLocal);
+            // Vé nghỉ phép giữ nguyên streak, không reset cũng không cộng
         } else {
             if (status == CheckinStatus.COMEBACK) {
-                participant.setCurrentStreak(1);
+                participant.setCurrentStreak(1); // Reset về 1
             } else {
-                participant.setCurrentStreak(participant.getCurrentStreak() + 1);
+                participant.setCurrentStreak(participant.getCurrentStreak() + 1); // Cộng dồn
             }
             participant.setLastCheckinAt(todayLocal);
         }
         participantRepository.save(participant);
     }
 
-    // --- CÁC HÀM GET FEED: ĐÃ THÊM @Transactional(readOnly = true) ---
+    // --- CÁC HÀM GET FEED (CÓ LỌC CHẶN) ---
 
     @Override
-    @Transactional(readOnly = true) // Fix LazyInitializationException
+    @Transactional(readOnly = true)
     public Page<CheckinResponse> getJourneyFeed(UUID journeyId, Pageable pageable, User currentUser) {
         if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
             throw new BadRequestException("Không có quyền xem");
         }
+        // Feed trong nhóm thì thường vẫn hiện hết, trừ khi bạn muốn chặn cả trong nhóm.
+        // Nếu muốn chặn trong nhóm, cần viết lại query findByJourneyId... để nhận list excludedUserIds
         return checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journeyId, pageable)
                 .map(checkinMapper::toResponse)
                 .map(this::enrichResponse); 
     }
 
     @Override
-    @Transactional
-    public CommentResponse postComment(UUID checkinId, String content, User currentUser) {
-        Checkin checkin = checkinRepository.findById(checkinId)
-                .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
-
-        if (checkin.getJourney().getInteractionType() == InteractionType.RESTRICTED) {
-            throw new BadRequestException("Hành trình này đã tắt tính năng bình luận.");
-        }
-
-        CheckinComment comment = CheckinComment.builder()
-                .checkin(checkin)
-                .user(currentUser)
-                .content(content)
-                .build();
-        
-        comment = commentRepository.save(comment);
-        eventPublisher.publishEvent(new CommentPostedEvent(checkin, currentUser, content));
-        return checkinMapper.toCommentResponse(comment);
-    }
-
-    @Override
-    @Transactional(readOnly = true) // Fix LazyInitializationException cho User trong comment
-    public Page<CommentResponse> getComments(UUID checkinId, Pageable pageable) {
-        return commentRepository.findByCheckinId(checkinId, SecurityUtils.getCurrentUserId(), pageable)
-                .map(checkinMapper::toCommentResponse);
-    }
-
-    @Override
-    @Transactional(readOnly = true) // Fix LazyInitializationException
+    @Transactional(readOnly = true)
     public List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit) {
         if (cursor == null) cursor = LocalDateTime.now();
         Pageable pageable = PageRequest.of(0, limit);
@@ -256,7 +271,7 @@ public class CheckinServiceImpl implements CheckinService {
     }
 
     @Override
-    @Transactional(readOnly = true) // Fix LazyInitializationException
+    @Transactional(readOnly = true)
     public List<CheckinResponse> getJourneyFeedByCursor(UUID journeyId, User currentUser, LocalDateTime cursor, int limit) {
         if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
             throw new BadRequestException("Bạn không có quyền xem hành trình này");
@@ -271,10 +286,134 @@ public class CheckinServiceImpl implements CheckinService {
                 .map(this::enrichResponse)
                 .collect(Collectors.toList());
     }
+    
+    // --- COMMENT & UPDATE/DELETE ---
 
-    private Set<Long> getExcludedUserIds(Long userId) {
-        Set<Long> blockedIds = userBlockRepository.findAllBlockedUserIdsInteraction(userId);
-        blockedIds.add(-1L); 
-        return blockedIds;
+    @Override
+    @Transactional
+    public CommentResponse postComment(UUID checkinId, String content, User currentUser) {
+        Checkin checkin = checkinRepository.findById(checkinId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
+
+        if (checkin.getJourney().getInteractionType() == InteractionType.RESTRICTED) {
+            throw new BadRequestException("Hành trình này đã tắt tính năng bình luận.");
+        }
+        
+        if (userBlockRepository.existsByBlockerIdAndBlockedId(checkin.getUser().getId(), currentUser.getId())) {
+             throw new BadRequestException("Bạn không thể bình luận bài viết này.");
+        }
+
+        CheckinComment comment = CheckinComment.builder()
+                .checkin(checkin)
+                .user(currentUser)
+                .content(content)
+                .build();
+        
+        comment = commentRepository.save(comment);
+        eventPublisher.publishEvent(new CommentPostedEvent(checkin, currentUser, content));
+        return checkinMapper.toCommentResponse(comment);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Page<CommentResponse> getComments(UUID checkinId, Pageable pageable) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        Set<Long> excludedUserIds = getExcludedUserIds(currentUserId);
+        
+        return commentRepository.findByCheckinId(checkinId, excludedUserIds, pageable)
+                .map(checkinMapper::toCommentResponse);
+    }
+
+    @Override
+    @Transactional
+    public CheckinResponse updateCheckin(UUID checkinId, String caption, User currentUser) {
+        Checkin checkin = checkinRepository.findById(checkinId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
+
+        if (!checkin.getUser().getId().equals(currentUser.getId())) {
+            throw new BadRequestException("Bạn không có quyền sửa bài viết này");
+        }
+
+        checkin.setCaption(caption);
+        checkin = checkinRepository.save(checkin);
+        return checkinMapper.toResponse(checkin);
+    }
+
+    @Override
+    @Transactional
+    @CacheEvict(value = "journey_widget", allEntries = true)
+    public void deleteCheckin(UUID checkinId, User currentUser) {
+        Checkin checkin = checkinRepository.findById(checkinId)
+                .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
+
+        if (!checkin.getUser().getId().equals(currentUser.getId())) {
+            throw new BadRequestException("Bạn không có quyền xóa bài viết này");
+        }
+
+        Journey journey = checkin.getJourney();
+        
+        if (checkin.getStatus() == CheckinStatus.REST && journey.isRequiresFreezeTicket()) {
+            User user = userRepository.findById(currentUser.getId()).orElse(currentUser);
+            user.setFreezeStreakCount(user.getFreezeStreakCount() + 1); 
+            userRepository.save(user);
+        }
+
+        checkinRepository.delete(checkin);
+        checkinRepository.flush(); 
+
+        JourneyParticipant participant = participantRepository
+                .findByJourneyIdAndUserId(journey.getId(), currentUser.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Participant not found"));
+
+        recalculateParticipantStats(participant, currentUser);
+    }
+
+    private void recalculateParticipantStats(JourneyParticipant participant, User user) {
+        String tz = user.getTimezone() != null ? user.getTimezone() : "UTC";
+        ZoneId userZone = ZoneId.of(tz);
+        LocalDate today = LocalDate.now(userZone);
+
+        List<LocalDateTime> history = checkinRepository.findValidCheckinDates(
+                participant.getJourney().getId(), 
+                user.getId()
+        );
+
+        if (history.isEmpty()) {
+            participant.setCurrentStreak(0);
+            participant.setLastCheckinAt(null);
+            participantRepository.save(participant);
+            return;
+        }
+
+        LocalDateTime lastCheckinTime = history.get(0);
+        LocalDate lastCheckinDate = lastCheckinTime.atZone(ZoneId.of("UTC"))
+                                                   .withZoneSameInstant(userZone)
+                                                   .toLocalDate();
+        participant.setLastCheckinAt(lastCheckinDate);
+
+        int streak = 0;
+        Set<LocalDate> uniqueDates = history.stream()
+                .map(dt -> dt.atZone(ZoneId.of("UTC")).withZoneSameInstant(userZone).toLocalDate())
+                .collect(Collectors.toSet());
+
+        LocalDate cursorDate = today;
+        
+        if (!uniqueDates.contains(cursorDate)) {
+            if (uniqueDates.contains(cursorDate.minusDays(1))) {
+                cursorDate = cursorDate.minusDays(1); 
+            } else {
+                participant.setCurrentStreak(0);
+                participantRepository.save(participant);
+                return;
+            }
+        }
+
+        while (uniqueDates.contains(cursorDate)) {
+            streak++;
+            cursorDate = cursorDate.minusDays(1);
+        }
+
+        participant.setCurrentStreak(streak);
+        participantRepository.save(participant);
     }
 }

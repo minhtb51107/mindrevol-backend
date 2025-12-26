@@ -5,6 +5,7 @@ import org.springframework.stereotype.Repository;
 
 import com.mindrevol.backend.modules.auth.entity.PasswordResetToken;
 
+import java.util.Date;
 import java.util.Optional;
 
 @Repository
@@ -16,5 +17,6 @@ public interface PasswordResetTokenRepository extends JpaRepository<PasswordRese
      * @return Optional chứa PasswordResetToken nếu tìm thấy.
      */
     Optional<PasswordResetToken> findByToken(String token);
-
+    
+    void deleteByExpiryDateBefore(Date now);
 }

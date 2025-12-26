@@ -21,6 +21,8 @@ import org.springframework.web.bind.annotation.RestController;
 import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.modules.auth.dto.request.AppleLoginRequest;
 import com.mindrevol.backend.modules.auth.dto.request.ChangePasswordRequest;
+import com.mindrevol.backend.modules.auth.dto.request.CheckEmailRequest;
+import com.mindrevol.backend.modules.auth.dto.request.CreatePasswordRequest;
 import com.mindrevol.backend.modules.auth.dto.request.FacebookLoginRequest;
 import com.mindrevol.backend.modules.auth.dto.request.ForgotPasswordRequest;
 import com.mindrevol.backend.modules.auth.dto.request.GoogleLoginRequest;
@@ -37,6 +39,7 @@ import com.mindrevol.backend.modules.auth.service.AuthService;
 import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
 import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse; // Import mới
 
+import io.swagger.v3.oas.annotations.Operation;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -49,16 +52,16 @@ public class AuthController {
     private final AuthService authService;
 
     // --- API MỚI: Check Email (cho luồng Spotify) ---
+ // Thay đổi tham số đầu vào từ Map sang DTO
     @PostMapping("/check-email")
-    public ResponseEntity<ApiResponse<UserSummaryResponse>> checkEmail(@RequestBody Map<String, String> request) {
-        String email = request.get("email");
-        UserSummaryResponse summary = authService.checkEmail(email);
+    public ResponseEntity<ApiResponse<UserSummaryResponse>> checkEmail(@Valid @RequestBody CheckEmailRequest request) { // Thêm @Valid
+        // Lấy email từ request.getEmail() thay vì request.get("email")
+        UserSummaryResponse summary = authService.checkEmail(request.getEmail());
         
+        // ... logic giữ nguyên
         if (summary != null) {
-            // Có user -> Trả về data (Avatar, Tên...)
             return ResponseEntity.ok(ApiResponse.success(summary, "Email đã tồn tại"));
         } else {
-            // Không có user -> Trả về data null (Frontend sẽ hiểu là user mới)
             return ResponseEntity.ok(ApiResponse.success(null, "Email chưa đăng ký"));
         }
     }
@@ -202,5 +205,22 @@ public class AuthController {
             HttpServletRequest servletRequest) {
         JwtResponse jwtResponse = authService.loginWithTikTok(request, servletRequest);
         return ResponseEntity.ok(ApiResponse.success(jwtResponse));
+    }
+    
+    @GetMapping("/has-password")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Kiểm tra xem user đã thiết lập mật khẩu chưa") // Nếu bạn dùng Swagger
+    public ResponseEntity<ApiResponse<Boolean>> checkHasPassword(@AuthenticationPrincipal UserDetails userDetails) {
+        return ResponseEntity.ok(ApiResponse.success(authService.hasPassword(userDetails.getUsername())));
+    }
+
+    @PostMapping("/create-password")
+    @PreAuthorize("isAuthenticated()")
+    @Operation(summary = "Tạo mật khẩu mới (dành cho user đăng nhập bằng MXH)")
+    public ResponseEntity<ApiResponse<Void>> createPassword(
+            @Valid @RequestBody CreatePasswordRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        authService.createPassword(request, userDetails.getUsername());
+        return ResponseEntity.ok(ApiResponse.success("Đã thiết lập mật khẩu thành công."));
     }
 }

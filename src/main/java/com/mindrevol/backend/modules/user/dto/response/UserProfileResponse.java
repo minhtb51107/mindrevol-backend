@@ -37,4 +37,6 @@ public class UserProfileResponse {
     private long followingCount;
     
     private boolean isFollowedByCurrentUser;
+    
+    private long friendCount; // [THÊM MỚI]
 }

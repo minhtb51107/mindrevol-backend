@@ -11,6 +11,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
 import org.redisson.api.RedissonClient;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
@@ -27,6 +28,7 @@ import java.util.concurrent.TimeUnit;
 @Component
 @RequiredArgsConstructor
 @Slf4j
+@ConditionalOnProperty(name = "app.gamification.enabled", havingValue = "true")
 public class DailyStreakResetJob {
 
     private final JourneyParticipantRepository participantRepository;
@@ -73,8 +75,10 @@ public class DailyStreakResetJob {
 
     @Transactional
     public boolean processBatch(Pageable pageable) {
-        // Query: Lấy user có streak > 0 để kiểm tra xem đã qua ngày chưa
-        Slice<JourneyParticipant> slice = participantRepository.findByCurrentStreakGreaterThan(0, pageable);
+        // --- [SỬA ĐỔI] Sử dụng hàm query mới để chỉ lấy các hành trình chưa kết thúc ---
+        // Thay vì: participantRepository.findByCurrentStreakGreaterThan(0, pageable);
+        Slice<JourneyParticipant> slice = participantRepository.findActiveParticipantsWithStreak(0, pageable);
+        
         List<JourneyParticipant> participants = slice.getContent();
 
         if (participants.isEmpty()) {

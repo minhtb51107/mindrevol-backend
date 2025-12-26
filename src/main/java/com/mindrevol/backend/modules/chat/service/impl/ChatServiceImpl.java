@@ -15,7 +15,7 @@ import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
 import com.mindrevol.backend.modules.user.service.UserBlockService;
-import com.mindrevol.backend.modules.user.service.UserPresenceService; // Import Presence Service
+import com.mindrevol.backend.modules.user.service.UserPresenceService; 
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -37,7 +37,7 @@ public class ChatServiceImpl implements ChatService {
     private final ChatMapper chatMapper;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserBlockService userBlockService;
-    private final UserPresenceService userPresenceService; // Inject Service check online
+    private final UserPresenceService userPresenceService; 
 
     @Override
     @Transactional
@@ -48,7 +48,8 @@ public class ChatServiceImpl implements ChatService {
             throw new BadRequestException("Bạn không thể gửi tin nhắn cho người này.");
         }
 
-        Conversation conversation = conversationRepository.findConversationByUsers(senderId, receiverId)
+        // [CẬP NHẬT] Sử dụng hàm tìm kiếm chính xác 1-1
+        Conversation conversation = conversationRepository.findByUsers(senderId, receiverId)
                 .orElseGet(() -> createNewConversation(senderId, receiverId));
 
         Message message = Message.builder()
@@ -64,7 +65,6 @@ public class ChatServiceImpl implements ChatService {
 
         message = messageRepository.save(message);
 
-        // Update sorting inbox
         String previewContent = message.getType() == MessageType.IMAGE ? "[Hình ảnh]" : message.getContent();
         conversation.setLastMessageContent(previewContent);
         conversation.setLastMessageAt(LocalDateTime.now());
@@ -74,7 +74,6 @@ public class ChatServiceImpl implements ChatService {
 
         MessageResponse response = chatMapper.toResponse(message);
 
-        // Real-time push
         messagingTemplate.convertAndSendToUser(
                 String.valueOf(receiverId),
                 "/queue/messages",
@@ -97,22 +96,17 @@ public class ChatServiceImpl implements ChatService {
         return conversationRepository.save(conv);
     }
 
-    // [FIX LỖI 500]: Thêm @Transactional(readOnly = true)
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> getUserConversations(Long userId) {
-        // 1. Lấy list từ DB
-        List<Conversation> conversations = conversationRepository.findByUser(userId);
+        // [QUAN TRỌNG] Gọi hàm findValidConversationsByUserId để lọc bỏ user bị chặn
+        List<Conversation> conversations = conversationRepository.findValidConversationsByUserId(userId);
 
-        // 2. Map sang DTO
         return conversations.stream().map(conv -> {
-            // Xác định ai là Partner
             User partnerEntity = conv.getUser1().getId().equals(userId) ? conv.getUser2() : conv.getUser1();
             
-            // Lấy trạng thái Online thật từ Redis
             boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
 
-            // [LỖI TRƯỚC ĐÂY]: partnerEntity.getFullname() gây lỗi LazyInit nếu không có Transactional
             UserSummaryResponse partnerDto = UserSummaryResponse.builder()
                 .id(partnerEntity.getId())
                 .fullname(partnerEntity.getFullname())
@@ -145,11 +139,9 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional(readOnly = true)
     public Page<MessageResponse> getMessagesWithUser(Long currentUserId, Long partnerId, Pageable pageable) {
-        Conversation conversation = conversationRepository.findConversationByUsers(currentUserId, partnerId)
+        // [CẬP NHẬT] Sử dụng hàm tìm kiếm chính xác
+        Conversation conversation = conversationRepository.findByUsers(currentUserId, partnerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Chưa có cuộc trò chuyện nào."));
-        
-        // Lưu ý: Không gọi hàm ghi (markRead) trong hàm đọc (readOnly) nếu không cần thiết
-        // Frontend sẽ gọi API markRead riêng
         
         return getConversationMessages(conversation.getId(), pageable);
     }
@@ -165,7 +157,6 @@ public class ChatServiceImpl implements ChatService {
 
         if (lastMessage != null) {
             boolean updated = false;
-            // Cập nhật con trỏ đã đọc
             if (conversation.getUser1().getId().equals(userId)) {
                 if (conversation.getUser1LastReadMessageId() == null || conversation.getUser1LastReadMessageId() < lastMessage.getId()) {
                     conversation.setUser1LastReadMessageId(lastMessage.getId());
@@ -181,7 +172,6 @@ public class ChatServiceImpl implements ChatService {
             if (updated) {
                 conversationRepository.save(conversation);
                 
-                // Gửi Socket báo "Đã xem" cho đối phương
                 Long partnerId = conversation.getUser1().getId().equals(userId) 
                         ? conversation.getUser2().getId() 
                         : conversation.getUser1().getId();
@@ -198,5 +188,53 @@ public class ChatServiceImpl implements ChatService {
     @Override
     public Conversation getConversationById(Long id) {
         return conversationRepository.findById(id).orElseThrow();
+    }
+    
+    @Override
+    @Transactional
+    public ConversationResponse getOrCreateConversation(Long senderId, Long receiverId) {
+        // 1. Kiểm tra xem đã chặn nhau chưa (dùng lại logic của UserBlockService)
+        if (userBlockService.isBlocked(receiverId, senderId) || userBlockService.isBlocked(senderId, receiverId)) {
+            throw new BadRequestException("Không thể bắt đầu cuộc trò chuyện do chặn người dùng.");
+        }
+
+        // 2. Tìm cuộc hội thoại đã tồn tại (Dùng hàm findByUsers đã có trong Repo)
+        // Nếu chưa có thì gọi hàm createNewConversation (đã có ở cuối file service của bạn)
+        Conversation conversation = conversationRepository.findByUsers(senderId, receiverId)
+                .orElseGet(() -> createNewConversation(senderId, receiverId));
+
+        // 3. Map Entity sang Response (Logic này lấy từ getUserConversations để đảm bảo giống format)
+        return mapToConversationResponse(conversation, senderId);
+    }
+
+    // --- Helper để map dữ liệu (tránh lặp code) ---
+    private ConversationResponse mapToConversationResponse(Conversation conv, Long currentUserId) {
+        // Xác định ai là người đối diện (Partner)
+        User partnerEntity = conv.getUser1().getId().equals(currentUserId) ? conv.getUser2() : conv.getUser1();
+        
+        // Kiểm tra Online
+        boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
+
+        // Map thông tin Partner
+        UserSummaryResponse partnerDto = UserSummaryResponse.builder()
+            .id(partnerEntity.getId())
+            .fullname(partnerEntity.getFullname())
+            .avatarUrl(partnerEntity.getAvatarUrl())
+            .handle(partnerEntity.getHandle())
+            .isOnline(isOnline)
+            .build();
+
+        // Đếm tin nhắn chưa đọc
+        long unread = messageRepository.countUnreadMessages(conv.getId(), currentUserId);
+
+        return ConversationResponse.builder()
+                .id(conv.getId())
+                .partner(partnerDto)
+                .lastMessageContent(conv.getLastMessageContent())
+                .lastMessageAt(conv.getLastMessageAt())
+                .lastSenderId(conv.getLastSenderId())
+                .unreadCount(unread)
+                .status(conv.getStatus() != null ? conv.getStatus().name() : "ACTIVE") // Dùng Enum thực tế ACTIVE
+                .build();
     }
 }

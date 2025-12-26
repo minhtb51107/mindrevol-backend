@@ -37,6 +37,15 @@ public class CheckinVerification {
     @Column(name = "is_approved", nullable = false)
     private boolean isApproved;
 
+    // --- [THÊM MỚI] Lý do/Feedback từ Admin hoặc User ---
+    @Column(columnDefinition = "TEXT")
+    private String feedback;
+
+    // --- [THÊM MỚI] Thời điểm duyệt (khác với createdAt là thời điểm tạo record) ---
+    @Column(name = "reviewed_at")
+    private LocalDateTime reviewedAt;
+
     @CreatedDate
+    @Column(name = "created_at", updatable = false)
     private LocalDateTime createdAt;
 }

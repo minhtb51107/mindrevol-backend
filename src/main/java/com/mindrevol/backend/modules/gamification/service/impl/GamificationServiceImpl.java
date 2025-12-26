@@ -88,13 +88,18 @@ public class GamificationServiceImpl implements GamificationService {
     @Override
     @Transactional
     public void awardPoints(User user, int amount, String reason) {
-        user.setPoints(user.getPoints() + amount);
-        userRepository.save(user);
+        // [CẬP NHẬT] Sử dụng incrementPoints để tránh race condition
+        userRepository.incrementPoints(user.getId(), amount);
+        
+        // Fetch lại user hoặc tính toán số dư mới (tạm tính để ghi log)
+        // Lưu ý: Nếu muốn chính xác tuyệt đối trong log khi concurrency cao, cần fetch lại user.
+        // Ở đây ta cộng tạm vào object user hiện tại để ghi log (chấp nhận sai số hiển thị nhỏ trong log nếu có đua)
+        long newBalance = user.getPoints() + amount;
 
         PointHistory history = PointHistory.builder()
                 .user(user)
                 .amount((long) amount)
-                .balanceAfter(user.getPoints())
+                .balanceAfter(newBalance)
                 .reason(reason)
                 .source(PointSource.CHECKIN)
                 .build();
@@ -112,27 +117,31 @@ public class GamificationServiceImpl implements GamificationService {
 
         if (participant == null) return;
 
-        // Trừ điểm phạt
-        int penalty = pointsPerCheckin; 
-        user.setPoints(user.getPoints() - penalty);
-        userRepository.save(user);
+        // 1. Trừ điểm (Phạt)
+        int pointsRevoked = (checkin.getStatus() == CheckinStatus.COMEBACK) ? pointsPerComeback : pointsPerCheckin;
+        
+        // [CẬP NHẬT] Dùng incrementPoints với số âm để trừ, cho phép âm điểm khi bị phạt
+        userRepository.incrementPoints(user.getId(), -pointsRevoked);
 
         PointHistory history = PointHistory.builder()
                 .user(user)
-                .amount((long) -penalty)
-                .balanceAfter(user.getPoints())
-                .reason("Bị trừ điểm do bài đăng không hợp lệ (ID: " + checkin.getId() + ")")
+                .amount((long) -pointsRevoked)
+                .balanceAfter(user.getPoints() - pointsRevoked)
+                .reason("Bị gỡ bài check-in vi phạm (ID: " + checkin.getId() + ")")
                 .source(PointSource.ADMIN_ADJUST)
                 .build();
         pointHistoryRepository.save(history);
 
-        // Rollback Streak
-        if (participant.getCurrentStreak() > 0) {
-            participant.setCurrentStreak(participant.getCurrentStreak() - 1);
-            if (participant.getLastCheckinAt() != null) {
-                participant.setLastCheckinAt(participant.getLastCheckinAt().minusDays(1));
+        // 2. Rollback Streak
+        if (checkin.getStatus() != CheckinStatus.REST && checkin.getStatus() != CheckinStatus.REJECTED) {
+            if (participant.getCurrentStreak() > 0) {
+                participant.setCurrentStreak(participant.getCurrentStreak() - 1);
+                
+                if (participant.getLastCheckinAt() != null) {
+                   participant.setLastCheckinAt(participant.getLastCheckinAt().minusDays(1));
+                }
+                participantRepository.save(participant);
             }
-            participantRepository.save(participant);
         }
     }
 
@@ -180,17 +189,22 @@ public class GamificationServiceImpl implements GamificationService {
     @Override
     @Transactional
     public boolean buyFreezeStreakItem(User user) {
-        if (user.getPoints() < freezeItemCost) {
-            throw new BadRequestException("Bạn không đủ điểm! Cần " + freezeItemCost + " điểm.");
+        // [CẬP NHẬT] Atomic Update - Trừ điểm an toàn
+        // Hàm decrementPoints trả về số dòng update được (1 nếu thành công, 0 nếu không đủ điều kiện points >= cost)
+        int rowsUpdated = userRepository.decrementPoints(user.getId(), freezeItemCost);
+        
+        if (rowsUpdated == 0) {
+            throw new BadRequestException("Giao dịch thất bại! Bạn không đủ điểm (Cần " + freezeItemCost + " điểm) hoặc tài khoản không tồn tại.");
         }
-        user.setPoints(user.getPoints() - freezeItemCost);
+
+        // Nếu trừ tiền thành công mới cộng vật phẩm
         user.setFreezeStreakCount(user.getFreezeStreakCount() + 1);
-        userRepository.save(user);
+        userRepository.save(user); // Lưu lại số lượng item mới
         
         PointHistory history = PointHistory.builder()
                 .user(user)
                 .amount((long) -freezeItemCost)
-                .balanceAfter(user.getPoints())
+                .balanceAfter(user.getPoints() - freezeItemCost) // Balance tương đối
                 .reason("Mua vé đóng băng")
                 .source(PointSource.SHOP_PURCHASE)
                 .build();
@@ -199,7 +213,6 @@ public class GamificationServiceImpl implements GamificationService {
         return true;
     }
 
-    // --- [MỚI] Hàm Sửa Chuỗi (Repair) ---
     @Override
     @Transactional
     public void repairStreak(UUID journeyId, User user) {
@@ -211,27 +224,41 @@ public class GamificationServiceImpl implements GamificationService {
             throw new BadRequestException("Bạn không có chuỗi nào bị mất gần đây để khôi phục.");
         }
         
-        // 2. Trừ tiền/điểm
-        if (user.getPoints() < repairItemCost) {
-            throw new BadRequestException("Bạn không đủ điểm để sửa chuỗi! Cần " + repairItemCost + " điểm.");
+        // 2. [CẬP NHẬT] Atomic Update - Trừ điểm an toàn
+        int rowsUpdated = userRepository.decrementPoints(user.getId(), repairItemCost);
+        if (rowsUpdated == 0) {
+             throw new BadRequestException("Bạn không đủ điểm để sửa chuỗi! Cần " + repairItemCost + " điểm.");
         }
-        user.setPoints(user.getPoints() - repairItemCost);
-        userRepository.save(user);
 
-        // 3. Khôi phục chuỗi
-        participant.setCurrentStreak(participant.getSavedStreak());
-        participant.setSavedStreak(0); // Xóa backup sau khi đã dùng
+        // --- Logic sửa chuỗi an toàn & đúng múi giờ ---
+        String tz = user.getTimezone() != null ? user.getTimezone() : "UTC";
+        LocalDate todayUser;
+        try {
+            todayUser = LocalDate.now(java.time.ZoneId.of(tz));
+        } catch (Exception e) {
+            todayUser = LocalDate.now();
+        }
+
+        boolean hasCheckedInToday = participant.getLastCheckinAt() != null && 
+                                    participant.getLastCheckinAt().isEqual(todayUser);
+
+        if (hasCheckedInToday) {
+            // Đã check-in hôm nay: Cộng dồn chuỗi cũ vào chuỗi hiện tại
+            participant.setCurrentStreak(participant.getSavedStreak() + participant.getCurrentStreak());
+        } else {
+            // Chưa check-in hôm nay: Khôi phục chuỗi và giả lập check-in hôm qua
+            participant.setCurrentStreak(participant.getSavedStreak());
+            participant.setLastCheckinAt(todayUser.minusDays(1));
+        }
         
-        // Hack: Set ngày check-in về "Hôm qua" để hệ thống tính là mạch lạc
-        participant.setLastCheckinAt(LocalDate.now().minusDays(1));
-        
+        participant.setSavedStreak(0); // Xóa backup
         participantRepository.save(participant);
 
         // 4. Ghi log
         PointHistory history = PointHistory.builder()
                 .user(user)
                 .amount((long) -repairItemCost)
-                .balanceAfter(user.getPoints())
+                .balanceAfter(user.getPoints() - repairItemCost)
                 .reason("Sửa chuỗi (Repair Streak)")
                 .source(PointSource.SHOP_PURCHASE)
                 .build();
@@ -282,24 +309,20 @@ public class GamificationServiceImpl implements GamificationService {
         List<Badge> allBadges = badgeRepository.findAll();
         List<UserBadge> userBadges = userBadgeRepository.findByUserId(user.getId());
 
-        // Map: BadgeID (Long) -> UserBadge
         Map<Long, UserBadge> userBadgeMap = userBadges.stream()
                 .collect(Collectors.toMap(ub -> ub.getBadge().getId(), Function.identity()));
 
         return allBadges.stream()
                 .map(badge -> {
                     UserBadge owned = userBadgeMap.get(badge.getId());
-                    
                     return BadgeResponse.builder()
                             .id(badge.getId())
                             .name(badge.getName())
                             .description(badge.getDescription())
                             .iconUrl(badge.getIconUrl())
                             .conditionType(badge.getConditionType() != null ? badge.getConditionType().name() : "")
-                            // Sửa lỗi: Đảm bảo Badge.java đã có field conditionValue
                             .requiredValue(badge.getConditionValue()) 
                             .isOwned(owned != null)
-                            // Sửa lỗi: Dùng getEarnedAt() thay vì getCreatedAt()
                             .obtainedAt(owned != null ? owned.getEarnedAt() : null) 
                             .build();
                 })

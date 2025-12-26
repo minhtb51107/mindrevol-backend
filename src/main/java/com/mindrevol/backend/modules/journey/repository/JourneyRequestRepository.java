@@ -13,4 +13,5 @@ import java.util.UUID;
 public interface JourneyRequestRepository extends JpaRepository<JourneyRequest, UUID> {
     Optional<JourneyRequest> findByJourneyIdAndUserId(UUID journeyId, Long userId);
     List<JourneyRequest> findByJourneyIdAndStatus(UUID journeyId, RequestStatus status);
+	boolean existsByJourneyIdAndUserIdAndStatus(UUID id, Long id2, RequestStatus pending);
 }

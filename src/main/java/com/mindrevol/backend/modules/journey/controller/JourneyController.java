@@ -17,8 +17,7 @@ import com.mindrevol.backend.modules.journey.service.JourneyService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 
-import com.mindrevol.backend.modules.user.entity.User; // Import đúng Entity User của bạn
-import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import com.mindrevol.backend.modules.user.entity.User;
 
 @RestController
 @RequestMapping("/api/v1/journeys")
@@ -26,7 +25,6 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 public class JourneyController {
 
     private final JourneyService journeyService;
-    // Không inject UserRepository nữa
 
     @PostMapping
     public ResponseEntity<ApiResponse<JourneyResponse>> createJourney(@Valid @RequestBody CreateJourneyRequest request) {
@@ -48,6 +46,29 @@ public class JourneyController {
         List<JourneyResponse> response = journeyService.getMyJourneys(userId);
         return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách thành công"));
     }
+
+    // --- TAB 1: Danh sách hành trình đang hoạt động ---
+    @GetMapping("/users/{userId}/active")
+    public ResponseEntity<ApiResponse<List<UserActiveJourneyResponse>>> getUserActiveJourneys(
+            @PathVariable Long userId) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        
+        List<UserActiveJourneyResponse> response = journeyService.getUserActiveJourneys(userId, currentUserId);
+        
+        return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách hành trình đang hoạt động thành công"));
+    }
+
+    // --- TAB 2: Danh sách hành trình đã kết thúc ---
+    @GetMapping("/users/{userId}/finished")
+    public ResponseEntity<ApiResponse<List<UserActiveJourneyResponse>>> getUserFinishedJourneys(
+            @PathVariable Long userId) {
+        Long currentUserId = SecurityUtils.getCurrentUserId();
+        
+        List<UserActiveJourneyResponse> response = journeyService.getUserFinishedJourneys(userId, currentUserId);
+        
+        return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách hành trình đã kết thúc thành công"));
+    }
+    // -----------------------------------------------------
 
     @DeleteMapping("/{journeyId}/leave")
     public ResponseEntity<ApiResponse<Void>> leaveJourney(@PathVariable UUID journeyId) {
@@ -119,11 +140,8 @@ public class JourneyController {
     public ResponseEntity<ApiResponse<Void>> transferOwnership(
             @PathVariable UUID id,
             @RequestParam Long newOwnerId,
-            @AuthenticationPrincipal User currentUser) { // <--- Sửa ở đây: Dùng User thay vì UserPrincipal
-        
-        // Bây giờ currentUser chính là Entity User của bạn, nên sẽ có .getId()
+            @AuthenticationPrincipal User currentUser) { 
         journeyService.transferOwnership(id, currentUser.getId(), newOwnerId);
-        
         return ResponseEntity.ok(ApiResponse.success(null, "Chuyển quyền sở hữu thành công"));
     }
     
@@ -132,5 +150,11 @@ public class JourneyController {
         Long userId = SecurityUtils.getCurrentUserId();
         journeyService.deleteJourney(journeyId, userId);
         return ResponseEntity.ok(ApiResponse.success(null, "Đã giải tán hành trình thành công"));
+    }
+    
+    @GetMapping("/{journeyId}/requests/pending")
+    public ResponseEntity<ApiResponse<List<JourneyRequestResponse>>> getPendingRequests(@PathVariable UUID journeyId) {
+        Long userId = SecurityUtils.getCurrentUserId();
+        return ResponseEntity.ok(ApiResponse.success(journeyService.getPendingRequests(journeyId, userId)));
     }
 }

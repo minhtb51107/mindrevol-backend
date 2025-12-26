@@ -33,28 +33,31 @@ public class VerificationServiceImpl implements VerificationService {
     private final GamificationService gamificationService;
     private final NotificationService notificationService;
 
-    // Ngưỡng báo cáo Fake để hệ thống tự động gỡ bài
-    // Trong MVP set cứng là 2 phiếu report (hoặc có thể cấu hình theo số thành viên nhóm)
-    private static final int FAKE_REPORT_THRESHOLD = 2; 
+    // Cấu hình tỷ lệ: 30% thành viên báo xấu -> Gỡ bài
+    private static final double REJECT_THRESHOLD_PERCENTAGE = 0.3;
+    // Ngưỡng tối thiểu (để tránh nhóm quá nhỏ 1-2 người report là bay màu ngay)
+    private static final int MIN_VOTES_REQUIRED = 2;
 
     @Override
     @Transactional
     public void castVote(UUID checkinId, User voter, boolean isApproved) {
-        // isApproved = true -> Vote Uy tín (Like/Support) - Chỉ mang tính chất tinh thần
-        // isApproved = false -> Report Fake (Quan trọng) - Dùng để kích hoạt cơ chế trừng phạt
+        // isApproved = true -> Vote Uy tín (Support)
+        // isApproved = false -> Report Fake (Reject)
 
         Checkin checkin = checkinRepository.findById(checkinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bài check-in không tồn tại"));
 
+        // Nếu bài đã bị gỡ hoặc admin duyệt rồi thì thôi
         if (checkin.getStatus() == CheckinStatus.REJECTED) {
-            throw new BadRequestException("Bài này đã bị gỡ bỏ rồi, không cần báo cáo nữa.");
+            throw new BadRequestException("Bài viết này đã bị gỡ bỏ.");
         }
 
         if (checkin.getUser().getId().equals(voter.getId())) {
             throw new BadRequestException("Không thể tự vote cho chính mình.");
         }
 
-        JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(checkin.getJourney().getId(), voter.getId())
+        // Kiểm tra quyền thành viên
+        JourneyParticipant voterParticipant = participantRepository.findByJourneyIdAndUserId(checkin.getJourney().getId(), voter.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
 
         // 1. Kiểm tra xem đã vote chưa
@@ -70,26 +73,46 @@ public class VerificationServiceImpl implements VerificationService {
                 .build();
         verificationRepository.save(verification);
 
-        // 3. Logic Xử lý Report Fake (Chỉ quan tâm khi isApproved = false)
-        if (!isApproved) { 
-            long fakeCount = verificationRepository.countRejections(checkinId); // Đếm tổng số phiếu reject
-            
-            // Đặc quyền Admin: 1 phiếu của Admin có sức nặng bằng cả Threshold -> Xóa luôn
-            boolean isAdmin = participant.getRole() == JourneyRole.ADMIN;
-            
-            if (isAdmin || fakeCount >= FAKE_REPORT_THRESHOLD) {
-                punishUser(checkin);
-            }
+        // 3. Logic Xử lý Report Fake (Chỉ quan tâm khi vote Reject)
+        if (!isApproved) {
+            handleRejectVote(checkin, voterParticipant);
+        }
+    }
+
+    private void handleRejectVote(Checkin checkin, JourneyParticipant voterParticipant) {
+        UUID journeyId = checkin.getJourney().getId();
+
+        // Đếm tổng số phiếu Reject hiện tại
+        long currentRejectCount = verificationRepository.countRejections(checkin.getId());
+
+        // Lấy tổng số thành viên trong hành trình
+        long totalMembers = participantRepository.countByJourneyId(journeyId);
+
+        // Tính ngưỡng phiếu cần thiết để gỡ bài
+        // Ví dụ: Nhóm 10 người -> Cần max(2, 10 * 0.3) = 3 phiếu
+        // Ví dụ: Nhóm 5 người -> Cần max(2, 5 * 0.3 = 1.5) = 2 phiếu
+        long dynamicThreshold = (long) Math.ceil(totalMembers * REJECT_THRESHOLD_PERCENTAGE);
+        long requiredVotes = Math.max(MIN_VOTES_REQUIRED, dynamicThreshold);
+
+        log.info("Checkin {} - Rejections: {}/{}. Total Members: {}", 
+                checkin.getId(), currentRejectCount, requiredVotes, totalMembers);
+
+        // ĐẶC QUYỀN ADMIN/OWNER: 1 phiếu của Admin có sức nặng tuyệt đối -> Xóa luôn
+        boolean isAdmin = (voterParticipant.getRole() == JourneyRole.ADMIN || voterParticipant.getRole() == JourneyRole.OWNER);
+
+        if (isAdmin || currentRejectCount >= requiredVotes) {
+            punishUser(checkin);
         }
     }
 
     private void punishUser(Checkin checkin) {
+        log.warn("Checkin {} marked as REJECTED. Initiating punishment.", checkin.getId());
+
         // 1. Đổi trạng thái bài viết sang REJECTED
         checkin.setStatus(CheckinStatus.REJECTED);
         checkinRepository.save(checkin);
 
         // 2. Thu hồi điểm và streak (Trừng phạt)
-        // Gọi sang GamificationService để thực hiện trừ điểm và lùi ngày check-in
         gamificationService.revokeGamification(checkin);
 
         // 3. Gửi thông báo cho người vi phạm
@@ -98,10 +121,9 @@ public class VerificationServiceImpl implements VerificationService {
                 null, // System sender
                 NotificationType.SYSTEM,
                 "Bài check-in bị gỡ! 🚨",
-                "Cộng đồng đã báo cáo ảnh của bạn không hợp lệ. Điểm và chuỗi Streak đã bị thu hồi.",
+                "Cộng đồng đã báo cáo ảnh của bạn không hợp lệ. Điểm và chuỗi Streak của bài này đã bị thu hồi.",
                 checkin.getId().toString(),
-                null
+                null // Không cần image
         );
-        log.info("Checkin {} marked as REJECTED due to community reports.", checkin.getId());
     }
 }

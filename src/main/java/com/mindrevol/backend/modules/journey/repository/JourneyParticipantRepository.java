@@ -64,4 +64,18 @@ public interface JourneyParticipantRepository extends JpaRepository<JourneyParti
            "WHERE j.status = 'ACTIVE' " +
            "AND (jp.lastCheckinAt IS NULL OR jp.lastCheckinAt < :today)")
     Slice<JourneyParticipant> findParticipantsToRemind(@Param("today") LocalDate today, Pageable pageable);
+    
+ // --- [SỬA ĐỔI] Query mới để lọc bỏ hành trình đã hết hạn ---
+    @Query("SELECT jp FROM JourneyParticipant jp " +
+           "JOIN FETCH jp.journey j " +
+           "JOIN FETCH jp.user u " +
+           "WHERE jp.currentStreak > :minStreak " +
+           "AND (j.endDate IS NULL OR j.endDate >= CURRENT_DATE)") 
+    Slice<JourneyParticipant> findActiveParticipantsWithStreak(@Param("minStreak") Integer minStreak, Pageable pageable);
+    
+ // --- [MỚI] Đếm số hành trình Active mà user đang tham gia ---
+    @Query("SELECT COUNT(jp) FROM JourneyParticipant jp " +
+           "WHERE jp.user.id = :userId " +
+           "AND jp.journey.status = 'ACTIVE'")
+    long countActiveJourneysByUserId(@Param("userId") Long userId);
 }
