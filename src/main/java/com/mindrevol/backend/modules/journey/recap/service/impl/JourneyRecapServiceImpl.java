@@ -18,7 +18,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -31,26 +30,18 @@ public class JourneyRecapServiceImpl implements JourneyRecapService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<CheckinResponse> getUserRecapFeed(UUID journeyId, User currentUser, Pageable pageable) {
-        // 1. Kiểm tra hành trình có tồn tại không
+    public Page<CheckinResponse> getUserRecapFeed(Long journeyId, User currentUser, Pageable pageable) {
         Journey journey = journeyRepository.findById(journeyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
 
-        // 2. Query lấy danh sách bài đăng của chính user đó trong hành trình này
+        // [FIX] findMyCheckinsInJourney giờ đã nhận Long ID ở Repository
         Page<Checkin> myCheckins = checkinRepository.findMyCheckinsInJourney(journeyId, currentUser.getId(), pageable);
 
-        // 3. Map sang Response và bổ sung thông tin Reaction (Tim/Like)
         return myCheckins.map(checkin -> {
             CheckinResponse response = checkinMapper.toResponse(checkin);
-            
-            // Lấy danh sách reaction preview (để hiện avatar người like giống Instagram)
             List<CheckinReactionDetailResponse> reactions = reactionService.getPreviewReactions(checkin.getId());
             response.setLatestReactions(reactions);
-            
-            // Mapper đã tự động map commentCount rồi (nếu bạn đã cấu hình @Formula hoặc count trong mapper)
             return response;
         });
     }
-
-    // --- BỎ HẾT CÁC HÀM XỬ LÝ VIDEO/SLIDE CŨ ĐI ---
 }

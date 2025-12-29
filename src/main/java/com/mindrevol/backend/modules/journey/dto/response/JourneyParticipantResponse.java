@@ -1,6 +1,6 @@
 package com.mindrevol.backend.modules.journey.dto.response;
 
-import com.mindrevol.backend.modules.journey.entity.JourneyRole;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 import lombok.Builder;
 import lombok.Data;
 
@@ -9,15 +9,13 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class JourneyParticipantResponse {
-    private Long userId;       
-    private String fullname;
-    private String avatarUrl;
-    private String handle;
-    private JourneyRole role;
+    private Long id; // Participant ID
+    private UserSummaryResponse user;
+    private String role;
+    private LocalDateTime joinedAt;
     
-    // [MỚI] Trạng thái trong ngày để hiển thị viền/icon
-    private DailyMemberStatus status;
-    
-    // [MỚI] Thời gian check-in gần nhất (nếu có)
-    private LocalDateTime lastCheckinTime;
+    // Chỉ số gamification tối giản
+    private int currentStreak;
+    private int totalCheckins;
+    private LocalDateTime lastCheckinAt;
 }

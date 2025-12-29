@@ -116,6 +116,8 @@ dependencies {
 
     implementation 'com.google.firebase:firebase-admin:9.2.0'
     
+    implementation 'com.github.f4b6a3:tsid-creator:5.2.6'
+    
 }
 
 tasks.named('test') {

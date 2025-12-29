@@ -2,48 +2,49 @@ package com.mindrevol.backend.modules.journey.service;
 
 import com.mindrevol.backend.modules.journey.dto.request.*;
 import com.mindrevol.backend.modules.journey.dto.response.*;
+import com.mindrevol.backend.modules.journey.entity.Journey;
+
 import java.util.List;
-import java.util.UUID;
 
 public interface JourneyService {
-    // Đổi User -> Long userId
     JourneyResponse createJourney(CreateJourneyRequest request, Long userId);
     
-    JourneyResponse joinJourney(JoinJourneyRequest request, Long userId);
+    // [ĐỔI] Join bằng inviteCode (đơn giản hơn là request object)
+    JourneyResponse joinJourney(String inviteCode, Long userId);
     
     List<JourneyResponse> getMyJourneys(Long userId);
     
-    void leaveJourney(UUID journeyId, Long userId);
+    void leaveJourney(Long journeyId, Long userId);
     
-    JourneyResponse updateJourneySettings(UUID journeyId, UpdateJourneySettingsRequest request, Long userId);
+    JourneyResponse updateJourney(Long journeyId, CreateJourneyRequest request, Long userId); // Update chung
     
-    void kickMember(UUID journeyId, Long memberId, Long requesterId);
+    void kickMember(Long journeyId, Long memberId, Long requesterId);
     
-    JourneyWidgetResponse getWidgetInfo(UUID journeyId, Long userId);
+    // Widget cho Home Screen
+    // JourneyWidgetResponse getWidgetInfo(Long journeyId, Long userId); 
+    // -> Tạm bỏ Widget phức tạp, dùng getMyJourneys là đủ info hiển thị rồi.
     
-    // Các hàm này cần User admin để check role, ta cũng truyền ID xuống để Service tự lấy User
-    void approveJoinRequest(UUID requestId, Long adminId);
+    // Quản lý Request (nếu để Private)
+    // void approveJoinRequest(Long requestId, Long adminId);
+    // void rejectJoinRequest(Long requestId, Long adminId);
     
-    void rejectJoinRequest(UUID requestId, Long adminId);
+    // Template
+    // List<JourneyResponse> getDiscoveryTemplates();
+    // JourneyResponse forkJourney(Long templateId, Long userId);
     
-    List<JourneyResponse> getDiscoveryTemplates();
+    // Tính năng vui vẻ
+    // void nudgeMember(Long journeyId, Long memberId, Long requesterId);
     
-    JourneyResponse forkJourney(UUID templateId, Long userId);
+    void transferOwnership(Long journeyId, Long currentOwnerId, Long newOwnerId);
     
-    void nudgeMember(UUID journeyId, Long memberId, Long requesterId);
+    List<JourneyParticipantResponse> getJourneyParticipants(Long journeyId);
     
-    // Hàm này chỉ đọc dữ liệu, truyền ID là đủ
-    List<RoadmapStatusResponse> getJourneyRoadmap(UUID journeyId, Long userId);
-    
-    void transferOwnership(UUID journeyId, Long currentOwnerId, Long newOwnerId);
-    
-    List<JourneyParticipantResponse> getJourneyParticipants(UUID journeyId);
-    
-    void deleteJourney(UUID journeyId, Long userId);
+    void deleteJourney(Long journeyId, Long userId);
 
-	List<JourneyRequestResponse> getPendingRequests(UUID journeyId, Long userId);
+    // List<JourneyRequestResponse> getPendingRequests(Long journeyId, Long userId);
 
-	List<UserActiveJourneyResponse> getUserActiveJourneys(Long targetUserId, Long currentUserId);
+    // Helper cho nội bộ
+    Journey getJourneyEntity(Long journeyId);
 
-	List<UserActiveJourneyResponse> getUserFinishedJourneys(Long targetUserId, Long currentUserId);
+	JourneyResponse getJourneyDetail(Long userId, Long journeyId);
 }

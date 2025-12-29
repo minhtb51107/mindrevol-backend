@@ -114,7 +114,7 @@ public class AuthServiceImpl implements AuthService {
             map.add("client_secret", tiktokClientSecret);
             map.add("code", request.getCode());
             map.add("grant_type", "authorization_code");
-            map.add("redirect_uri", "https://elfrieda-unhollowed-marcelle.ngrok-free.dev/tiktok-callback");
+            map.add("redirect_uri", "https://mindrevol.vercel.app/auth/callback/tiktok");
             
             // --- QUAN TRỌNG: Gửi Verifier để TikTok kiểm tra khớp với Challenge lúc nãy ---
             map.add("code_verifier", request.getCodeVerifier());

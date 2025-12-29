@@ -2,16 +2,11 @@ package com.mindrevol.backend.modules.habit.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
+import com.mindrevol.backend.common.entity.BaseEntity; // Kiểm tra lại package BaseEntity của bạn
 import com.mindrevol.backend.modules.user.entity.User;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.time.LocalTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "habits")
@@ -20,12 +15,11 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EntityListeners(AuditingEntityListener.class)
-public class Habit {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+// Không cần @EntityListeners(AuditingEntityListener.class) nữa vì BaseEntity đã có
+public class Habit extends BaseEntity {
 
+    // Đã xóa id UUID
+    
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -44,15 +38,11 @@ public class Habit {
     private LocalDate endDate;
 
     @Column(name = "journey_id")
-    private UUID journeyId;
+    private Long journeyId; // [FIX] Đổi từ UUID sang Long để khớp với bảng Journeys mới
 
     @Column(name = "is_archived")
     @Builder.Default
     private boolean archived = false;
 
-    @CreatedDate
-    private LocalDateTime createdAt;
-
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
+    // Đã xóa createdAt, updatedAt vì BaseEntity tự lo
 }

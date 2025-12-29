@@ -8,7 +8,7 @@ import java.util.UUID;
 @Data
 @Builder
 public class JourneyRequestResponse {
-    private UUID requestId;
+    private Long requestId;
     private Long userId;
     private String fullname;
     private String avatarUrl;

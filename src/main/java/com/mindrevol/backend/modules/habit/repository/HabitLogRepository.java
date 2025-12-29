@@ -10,6 +10,6 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface HabitLogRepository extends JpaRepository<HabitLog, UUID> {
-    Optional<HabitLog> findByHabitIdAndLogDate(UUID habitId, LocalDate logDate);
-}
+public interface HabitLogRepository extends JpaRepository<HabitLog, Long> {
+    Optional<HabitLog> findByHabitIdAndLogDate(Long long1, LocalDate logDate);
+};

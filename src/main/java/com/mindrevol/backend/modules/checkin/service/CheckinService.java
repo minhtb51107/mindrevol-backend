@@ -1,36 +1,32 @@
 package com.mindrevol.backend.modules.checkin.service;
 
-import java.util.List; // Import List
-import java.time.LocalDateTime; // Import LocalDateTime
-import java.util.UUID;
-
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
 import com.mindrevol.backend.modules.user.entity.User;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+
+import java.time.LocalDateTime;
+import java.util.List;
 
 public interface CheckinService {
 
     CheckinResponse createCheckin(CheckinRequest request, User currentUser);
 
-    Page<CheckinResponse> getJourneyFeed(UUID journeyId, Pageable pageable, User currentUser);
+    // [FIX] UUID -> Long
+    Page<CheckinResponse> getJourneyFeed(Long journeyId, Pageable pageable, User currentUser);
 
-    CommentResponse postComment(UUID checkinId, String content, User currentUser);
+    CommentResponse postComment(Long checkinId, String content, User currentUser);
     
-    Page<CommentResponse> getComments(UUID checkinId, Pageable pageable);
+    Page<CommentResponse> getComments(Long checkinId, Pageable pageable);
 
-    // --- CÁC HÀM FEED MỚI ---
     List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit);
 
-    List<CheckinResponse> getJourneyFeedByCursor(UUID journeyId, User currentUser, LocalDateTime cursor, int limit);
-    // ------------------------
+    // [FIX] UUID -> Long
+    List<CheckinResponse> getJourneyFeedByCursor(Long journeyId, User currentUser, LocalDateTime cursor, int limit);
     
- // [MỚI] Sửa caption
-    CheckinResponse updateCheckin(UUID checkinId, String caption, User currentUser);
+    CheckinResponse updateCheckin(Long checkinId, String caption, User currentUser);
 
-    // [MỚI] Xóa checkin
-    void deleteCheckin(UUID checkinId, User currentUser);
+    void deleteCheckin(Long checkinId, User currentUser);
 }

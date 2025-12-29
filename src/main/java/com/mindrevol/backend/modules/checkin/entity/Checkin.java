@@ -1,16 +1,15 @@
 package com.mindrevol.backend.modules.checkin.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.journey.entity.Journey;
-import com.mindrevol.backend.modules.journey.entity.JourneyTask;
 import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.UUID;
 
 @Entity
 @Table(name = "checkins", 
@@ -26,12 +25,10 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class Checkin {
+@SuperBuilder // [QUAN TRỌNG] Dùng SuperBuilder để kế thừa ID Long từ BaseEntity
+public class Checkin extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+    // [ĐÃ XÓA] @Id UUID id (BaseEntity đã lo ID Long)
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -41,9 +38,7 @@ public class Checkin {
     @JoinColumn(name = "journey_id", nullable = false)
     private Journey journey;
 
-    @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "task_id")
-    private JourneyTask task;
+    // [ĐÃ XÓA] private JourneyTask task; (Vì đã bỏ tính năng Task)
 
     @Column(columnDefinition = "TEXT")
     private String caption;
@@ -54,27 +49,23 @@ public class Checkin {
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
 
-    // --- [SỬA ĐỔI] Dùng String để thoải mái lưu mọi loại emotion/emoji ---
     @Column(length = 50) 
     private String emotion; 
-    // --------------------------------------------------------------------
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private CheckinStatus status;
+    @Builder.Default
+    private CheckinStatus status = CheckinStatus.NORMAL;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
     private CheckinVisibility visibility = CheckinVisibility.PUBLIC;
 
-    @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt;
-    
+    // BaseEntity đã có createdAt, nhưng ta cần checkinDate riêng cho logic business
     @Column(name = "checkin_date", nullable = false)
     private LocalDate checkinDate;
 
-    // --- [GIỮ NGUYÊN] Để Mapper hoạt động ---
     @OneToMany(mappedBy = "checkin", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<CheckinComment> comments = new ArrayList<>();
@@ -85,7 +76,7 @@ public class Checkin {
 
     @PrePersist
     public void prePersist() {
-        if (this.createdAt == null) this.createdAt = LocalDateTime.now();
-        if (this.checkinDate == null) this.checkinDate = this.createdAt.toLocalDate();
+        // BaseEntity sẽ tự set createdAt
+        if (this.checkinDate == null) this.checkinDate = LocalDate.now();
     }
 }

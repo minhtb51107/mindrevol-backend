@@ -3,7 +3,6 @@ package com.mindrevol.backend.modules.habit.service.impl;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 import org.springframework.context.ApplicationEventPublisher;
@@ -57,6 +56,7 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     public List<HabitResponse> getMyHabits(User user) {
+        // ID User là Long
         List<Habit> habits = habitRepository.findByUserIdAndArchivedFalse(user.getId());
         LocalDate today = LocalDate.now();
 
@@ -75,22 +75,20 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     @Transactional
-    public void markHabitCompleted(UUID habitId, UUID checkinId, User user) {
+    // [FIX] UUID -> Long
+    public void markHabitCompleted(Long habitId, Long checkinId, User user) {
         Habit habit = getHabitAndCheckOwner(habitId, user);
         saveHabitLog(habit, checkinId, HabitLogStatus.COMPLETED);
 
-        // --- LOGIC MỚI: Nếu Habit này liên kết với Journey ---
         if (habit.getJourneyId() != null && checkinId == null) {
-            // checkinId == null nghĩa là user tick tay từ màn hình Habit
-            // Hiện tại chúng ta CHỈ GHI LOG, chưa tự động tạo check-in Journey
-            // để đảm bảo tính "Proof of Work" (cần ảnh thật).
             log.info("Habit completed manually. Associated Journey ID: {}", habit.getJourneyId());
         }
     }
 
     @Override
     @Transactional
-    public void markHabitFailed(UUID habitId, User user) {
+    // [FIX] UUID -> Long
+    public void markHabitFailed(Long habitId, User user) {
         Habit habit = getHabitAndCheckOwner(habitId, user);
         saveHabitLog(habit, null, HabitLogStatus.FAILED);
     }
@@ -99,7 +97,8 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     @Transactional
-    public void markHabitCompletedByJourney(UUID journeyId, UUID checkinId, User user) {
+    // [FIX] UUID -> Long
+    public void markHabitCompletedByJourney(Long journeyId, Long checkinId, User user) {
         Optional<Habit> habitOpt = habitRepository.findByUserIdAndJourneyId(user.getId(), journeyId);
 
         if (habitOpt.isPresent()) {
@@ -112,7 +111,8 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     @Transactional
-    public void createHabitFromJourney(UUID journeyId, String journeyName, User user) {
+    // [FIX] UUID -> Long
+    public void createHabitFromJourney(Long journeyId, String journeyName, User user) {
         if (habitRepository.findByUserIdAndJourneyId(user.getId(), journeyId).isPresent()) {
             return; 
         }
@@ -130,16 +130,19 @@ public class HabitServiceImpl implements HabitService {
         log.info("Auto-created Habit from Journey {} for User {}", journeyId, user.getId());
     }
 
-    private Habit getHabitAndCheckOwner(UUID habitId, User user) {
+    // [FIX] UUID -> Long
+    private Habit getHabitAndCheckOwner(Long habitId, User user) {
         Habit habit = habitRepository.findById(habitId)
                 .orElseThrow(() -> new ResourceNotFoundException("Habit not found"));
+        // Cả 2 ID đều là Long, so sánh equals OK
         if (!habit.getUser().getId().equals(user.getId())) {
             throw new BadRequestException("Unauthorized access to habit");
         }
         return habit;
     }
 
-    private void saveHabitLog(Habit habit, UUID checkinId, HabitLogStatus status) {
+    // [FIX] UUID -> Long
+    private void saveHabitLog(Habit habit, Long checkinId, HabitLogStatus status) {
         LocalDate today = LocalDate.now();
         Optional<HabitLog> existingLog = habitLogRepository.findByHabitIdAndLogDate(habit.getId(), today);
 

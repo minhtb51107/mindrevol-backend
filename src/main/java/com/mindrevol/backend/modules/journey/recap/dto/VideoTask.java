@@ -15,7 +15,7 @@ import java.util.UUID;
 @AllArgsConstructor
 public class VideoTask implements Serializable {
     private Long userId;
-    private UUID journeyId;
+    private Long journeyId;
     private List<String> imageUrls; // Danh sách ảnh cần ghép thành video
     private String musicUrl;        // Link nhạc nền (nếu có)
     private int retryCount;

@@ -6,17 +6,14 @@ import org.springframework.web.multipart.MultipartFile;
 
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
 import com.mindrevol.backend.modules.checkin.entity.CheckinVisibility;
-//import com.mindrevol.backend.modules.checkin.entity.Emotion;
-
-import java.util.UUID;
 
 @Data
 public class CheckinRequest {
     @NotNull(message = "Hành trình là bắt buộc")
-    private UUID journeyId;
+    private Long journeyId; // [FIX] Đổi UUID -> Long
 
     @NotNull(message = "Ảnh check-in là bắt buộc")
-    private MultipartFile file; // File ảnh từ Client gửi lên
+    private MultipartFile file;
 
     @NotNull(message = "Cảm xúc là bắt buộc")
     private String emotion;
@@ -25,8 +22,7 @@ public class CheckinRequest {
     
     private CheckinStatus statusRequest = CheckinStatus.NORMAL; 
     
-    private UUID taskId;
+    // [ĐÃ XÓA] private UUID taskId;
 
-    // Default là PUBLIC nếu không gửi lên
     private CheckinVisibility visibility = CheckinVisibility.PUBLIC;
 }

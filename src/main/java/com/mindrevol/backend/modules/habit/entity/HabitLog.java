@@ -2,12 +2,9 @@ package com.mindrevol.backend.modules.habit.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import com.mindrevol.backend.common.entity.BaseEntity; // Kiểm tra lại package BaseEntity
 
 import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
 @Table(name = "habit_logs", uniqueConstraints = {
@@ -18,18 +15,17 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EntityListeners(AuditingEntityListener.class)
-public class HabitLog {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+// Không cần @EntityListeners nữa
+public class HabitLog extends BaseEntity {
+
+    // Đã xóa id UUID
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "habit_id", nullable = false)
     private Habit habit;
 
     @Column(name = "checkin_id")
-    private UUID checkinId; // Optional: Link tới ảnh check-in nếu có
+    private Long checkinId; // [FIX] Đổi từ UUID sang Long (Link tới bảng Checkin dùng ID số)
 
     @Column(nullable = false)
     private LocalDate logDate;
@@ -38,6 +34,5 @@ public class HabitLog {
     @Column(nullable = false)
     private HabitLogStatus status; // COMPLETED, FAILED, SKIPPED
 
-    @CreatedDate
-    private LocalDateTime createdAt;
+    // Đã xóa createdAt
 }

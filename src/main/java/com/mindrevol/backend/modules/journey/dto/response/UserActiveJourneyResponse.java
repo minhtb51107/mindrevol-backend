@@ -15,7 +15,7 @@ import java.util.UUID;
 @Setter
 @Builder
 public class UserActiveJourneyResponse {
-    private UUID id;
+    private Long id;
     private String name;
     private String description;
     private String status;        // IN_PROGRESS

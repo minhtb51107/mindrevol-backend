@@ -8,7 +8,7 @@ import java.util.UUID;
 @Data
 @Builder
 public class JourneyRecapResponse {
-    private UUID journeyId;
+    private Long journeyId;
     private String journeyName;
     private String musicTrackUrl; // (Optional) Gợi ý bài nhạc nền
     private List<RecapSlide> slides; // Danh sách các slide sẽ chạy

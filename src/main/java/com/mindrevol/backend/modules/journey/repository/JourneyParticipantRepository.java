@@ -1,81 +1,45 @@
 package com.mindrevol.backend.modules.journey.repository;
 
 import com.mindrevol.backend.modules.journey.entity.JourneyParticipant;
+import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
-public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, UUID> {
+public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, Long> {
 
-    // 1. Tìm kiếm cơ bản
-	@Query("SELECT jp FROM JourneyParticipant jp JOIN FETCH jp.journey WHERE jp.user.id = :userId")
+    @Query("SELECT jp FROM JourneyParticipant jp JOIN FETCH jp.journey WHERE jp.user.id = :userId ORDER BY jp.lastCheckinAt DESC")
     List<JourneyParticipant> findAllByUserId(@Param("userId") Long userId);
-
-    List<JourneyParticipant> findAllByJourneyId(UUID journeyId);
-
-    // 2. Check tồn tại (Dùng UUID cho JourneyId, Long cho UserId)
-    boolean existsByJourneyIdAndUserId(UUID journeyId, Long userId);
     
-    Optional<JourneyParticipant> findByJourneyIdAndUserId(UUID journeyId, Long userId);
-    
-    // --- THÊM MỚI: Đếm số thành viên trong 1 nhóm ---
-    long countByJourneyId(UUID journeyId);
+    Page<JourneyParticipant> findAllByUserId(Long userId, Pageable pageable);
 
-    // 3. Logic Gamification & Job
-    Slice<JourneyParticipant> findByCurrentStreakGreaterThan(Integer minStreak, Pageable pageable);
-    
-    @Modifying
-    @Query(value = """
-        UPDATE journey_participants 
-        SET current_streak = 0 
-        WHERE current_streak > 0 
-        AND deleted_at IS NULL 
-        AND id NOT IN (
-            SELECT p.id 
-            FROM journey_participants p
-            JOIN checkins c ON c.journey_id = p.journey_id AND c.user_id = p.user_id
-            WHERE c.created_at >= CURRENT_DATE - INTERVAL '1 DAY'
-            AND c.deleted_at IS NULL
-        )
-    """, nativeQuery = true)
-    void resetStreakForInactiveUsers();
+    List<JourneyParticipant> findAllByJourneyId(Long journeyId);
 
-    @Query("SELECT jp FROM JourneyParticipant jp " +
-           "JOIN FETCH jp.journey j " +
-           "JOIN FETCH jp.user u " +
-           "WHERE j.hasStreak = true " +
-           "AND jp.currentStreak > 0 " +
-           "AND (jp.lastCheckinAt IS NULL OR jp.lastCheckinAt < :yesterday)")
-    Slice<JourneyParticipant> findParticipantsToResetStreak(@Param("yesterday") LocalDate yesterday, Pageable pageable);
+    boolean existsByJourneyIdAndUserId(Long journeyId, Long userId);
+    
+    Optional<JourneyParticipant> findByJourneyIdAndUserId(Long journeyId, Long userId);
+    
+    long countByJourneyId(Long journeyId);
 
-    @Query("SELECT jp FROM JourneyParticipant jp " +
-           "JOIN FETCH jp.journey j " +
-           "JOIN FETCH jp.user u " +
-           "WHERE j.status = 'ACTIVE' " +
-           "AND (jp.lastCheckinAt IS NULL OR jp.lastCheckinAt < :today)")
-    Slice<JourneyParticipant> findParticipantsToRemind(@Param("today") LocalDate today, Pageable pageable);
-    
- // --- [SỬA ĐỔI] Query mới để lọc bỏ hành trình đã hết hạn ---
-    @Query("SELECT jp FROM JourneyParticipant jp " +
-           "JOIN FETCH jp.journey j " +
-           "JOIN FETCH jp.user u " +
-           "WHERE jp.currentStreak > :minStreak " +
-           "AND (j.endDate IS NULL OR j.endDate >= CURRENT_DATE)") 
-    Slice<JourneyParticipant> findActiveParticipantsWithStreak(@Param("minStreak") Integer minStreak, Pageable pageable);
-    
- // --- [MỚI] Đếm số hành trình Active mà user đang tham gia ---
-    @Query("SELECT COUNT(jp) FROM JourneyParticipant jp " +
-           "WHERE jp.user.id = :userId " +
-           "AND jp.journey.status = 'ACTIVE'")
+    @Query("SELECT COUNT(jp) FROM JourneyParticipant jp JOIN jp.journey j " +
+           "WHERE jp.user.id = :userId AND j.status = 'ONGOING'")
     long countActiveJourneysByUserId(@Param("userId") Long userId);
+
+    // [THÊM MỚI] Query tìm người cần nhắc nhở
+    // Logic: Hành trình đang diễn ra (ONGOING) VÀ (Chưa checkin bao giờ HOẶC checkin lần cuối trước 00:00 hôm nay)
+    // Dùng JOIN FETCH user để khi job gửi noti không bị lỗi Lazy Loading user ID
+    @Query("SELECT jp FROM JourneyParticipant jp " +
+           "JOIN FETCH jp.journey j " +
+           "JOIN FETCH jp.user u " +
+           "WHERE j.status = 'ONGOING' " +
+           "AND (jp.lastCheckinAt IS NULL OR jp.lastCheckinAt < :startOfToday)")
+    Slice<JourneyParticipant> findParticipantsToRemind(@Param("startOfToday") LocalDateTime startOfToday, Pageable pageable);
 }

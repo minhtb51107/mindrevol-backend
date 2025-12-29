@@ -7,12 +7,16 @@ import com.mindrevol.backend.modules.user.entity.Role;
 import com.mindrevol.backend.modules.user.entity.User;
 import org.mapstruct.*;
 
+import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface UserMapper {
 
+    // Map từ createdAt (Local) -> joinedAt (Offset)
     @Mapping(source = "createdAt", target = "joinedAt")
     @Mapping(target = "roles", source = "roles", qualifiedByName = "mapRoles")
     @Mapping(target = "followerCount", ignore = true) 
@@ -31,5 +35,10 @@ public interface UserMapper {
         return roles.stream()
                 .map(Role::getName)
                 .collect(Collectors.toSet());
+    }
+
+    // [FIX] Thêm hàm này để MapStruct tự dùng khi thấy LocalDateTime -> OffsetDateTime
+    default OffsetDateTime map(LocalDateTime value) {
+        return value != null ? value.atOffset(ZoneOffset.UTC) : null;
     }
 }

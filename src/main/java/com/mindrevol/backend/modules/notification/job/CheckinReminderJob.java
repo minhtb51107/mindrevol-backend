@@ -14,6 +14,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Component
@@ -29,19 +30,16 @@ public class CheckinReminderJob {
     public void remindUsersToCheckin() {
         log.info("Starting Check-in Reminder Job...");
 
-        LocalDate today = LocalDate.now();
+        // Lấy mốc thời gian bắt đầu ngày hôm nay (00:00:00)
+        LocalDateTime startOfToday = LocalDate.now().atStartOfDay();
+        
         int batchSize = 100;
         Pageable pageable = PageRequest.of(0, batchSize);
         
         boolean hasNext = true;
         
-        // Loop qua các trang dữ liệu
         while (hasNext) {
-            hasNext = processReminderBatch(today, pageable);
-            // Lưu ý: Vì job này CHỈ ĐỌC và gửi noti (không sửa dữ liệu query), 
-            // nên ta phải tăng page index thủ công nếu dùng Pageable thông thường.
-            // Tuy nhiên, logic query là "lastCheckin < today", khi gửi noti xong thì condition vẫn đúng.
-            // Nên ta cần tăng pageNumber lên.
+            hasNext = processReminderBatch(startOfToday, pageable);
             pageable = pageable.next(); 
         }
 
@@ -49,9 +47,9 @@ public class CheckinReminderJob {
     }
     
     @Transactional
-    public boolean processReminderBatch(LocalDate today, Pageable pageable) {
-        // Query tối ưu: Chỉ lấy người CHƯA check-in
-        Slice<JourneyParticipant> slice = participantRepository.findParticipantsToRemind(today, pageable);
+    public boolean processReminderBatch(LocalDateTime startOfToday, Pageable pageable) {
+        // Query tìm người chưa check-in kể từ đầu ngày
+        Slice<JourneyParticipant> slice = participantRepository.findParticipantsToRemind(startOfToday, pageable);
         List<JourneyParticipant> participants = slice.getContent();
         
         if (participants.isEmpty()) {
@@ -60,20 +58,13 @@ public class CheckinReminderJob {
 
         for (JourneyParticipant p : participants) {
             try {
-                String title;
-                String message;
-
-                if (p.getJourney().isHardcore()) {
-                    title = "Sắp hết ngày rồi! 😱";
-                    message = "Bạn chưa check-in cho hành trình " + p.getJourney().getName() + ". Đừng để mất chuỗi nhé!";
-                } else {
-                    title = "Chia sẻ khoảnh khắc nào! 📸";
-                    message = "Mọi người trong " + p.getJourney().getName() + " đang chờ tin bạn đấy!";
-                }
+                // [FIX] Bỏ logic Hardcore, dùng thông báo chung thân thiện
+                String title = "Đừng quên kỷ niệm hôm nay! 📸";
+                String message = "Bạn chưa check-in cho hành trình " + p.getJourney().getName() + ". Hãy lưu giữ khoảnh khắc trước khi ngày trôi qua nhé!";
 
                 notificationService.sendAndSaveNotification(
                         p.getUser().getId(),
-                        null,
+                        null, // System notification
                         NotificationType.CHECKIN_REMINDER,
                         title,
                         message,

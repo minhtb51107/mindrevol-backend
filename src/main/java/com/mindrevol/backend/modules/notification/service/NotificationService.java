@@ -11,13 +11,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.data.redis.core.RedisTemplate; // Import Redis
+import org.springframework.data.redis.core.RedisTemplate; 
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
-import java.util.concurrent.TimeUnit; // Import TimeUnit
+import java.util.concurrent.TimeUnit; 
 import java.util.HashMap;
 import java.util.Map;
 
@@ -28,32 +28,24 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final UserRepository userRepository;
-    private final RedisTemplate<String, Object> redisTemplate; // Inject Redis Template
+    private final RedisTemplate<String, Object> redisTemplate; 
     private final FirebaseService firebaseService;
     private final SimpMessagingTemplate messagingTemplate;
 
-    /**
-     * Hàm quan trọng nhất: Tạo và Gửi thông báo
-     */
     @Async 
     @Transactional
     public void sendAndSaveNotification(Long recipientId, Long senderId, NotificationType type,
                                         String title, String message, String referenceId, String imageUrl) {
         
         // --- LOGIC MỚI: CHỐNG SPAM (THROTTLING) ---
-        // Chỉ áp dụng với Reaction và Comment (những thứ dễ bị spam số lượng lớn)
         if (type == NotificationType.REACTION || type == NotificationType.COMMENT) {
-            // Tạo Key: noti_throttle:{userId}:{loại}:{id_bài_viết}
-            // Ví dụ: noti_throttle:10:REACTION:uuid-checkin-abc
             String throttleKey = "noti_throttle:" + recipientId + ":" + type + ":" + referenceId;
             
-            // Kiểm tra: Nếu key này đang tồn tại -> Nghĩa là vừa mới gửi thông báo cho bài này rồi
             if (Boolean.TRUE.equals(redisTemplate.hasKey(throttleKey))) {
                 log.info("Spam protection: Skipped notification for user {} type {} ref {}", recipientId, type, referenceId);
-                return; // DỪNG LẠI NGAY, không lưu DB, không gửi Push
+                return; 
             }
             
-            // Nếu chưa có -> Đánh dấu là đã gửi, key này sẽ tự hết hạn sau 30 phút
             redisTemplate.opsForValue().set(throttleKey, "1", 30, TimeUnit.MINUTES);
         }
         // ------------------------------------------
@@ -95,9 +87,7 @@ public class NotificationService {
             );
         }
 
-     // --- 2. LOGIC MỚI: Gửi WebSocket (In-App Realtime) ---
-        // Client sẽ subscribe: /user/queue/notifications
-        // Map sang Response DTO cho gọn
+        // --- 2. Gửi WebSocket ---
         NotificationResponse response = toResponse(notification);
         
         messagingTemplate.convertAndSendToUser(
@@ -143,7 +133,7 @@ public class NotificationService {
                 .referenceId(n.getReferenceId())
                 .imageUrl(n.getImageUrl())
                 .isRead(n.isRead())
-                .createdAt(n.getCreatedAt().toLocalDateTime())
+                .createdAt(n.getCreatedAt()) // [FIX] Bỏ .toLocalDateTime() đi
                 .senderId(n.getSender() != null ? n.getSender().getId() : null)
                 .senderName(n.getSender() != null ? n.getSender().getFullname() : "System")
                 .build();

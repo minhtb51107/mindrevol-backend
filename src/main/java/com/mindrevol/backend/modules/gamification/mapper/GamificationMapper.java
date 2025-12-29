@@ -23,12 +23,12 @@ public interface GamificationMapper {
     @Mapping(target = "conditionType", source = "badge.conditionType")
     @Mapping(target = "requiredValue", source = "badge.conditionValue")
     
-    // Quan trọng: Map earnedAt (Entity) -> obtainedAt (DTO)
-    @Mapping(target = "obtainedAt", source = "earnedAt") 
+    // [FIX] Sửa 'earnedAt' thành 'createdAt' (do kế thừa BaseEntity)
+    @Mapping(target = "obtainedAt", source = "createdAt") 
     @Mapping(target = "isOwned", constant = "true") 
     BadgeResponse toResponse(UserBadge userBadge);
 
-    // 2. Map từ Badge -> BadgeResponse (Dùng cho danh sách tổng)
+    // 2. Map từ Badge -> BadgeResponse
     @Mapping(target = "code", source = "code")
     @Mapping(target = "requiredValue", source = "conditionValue")
     @Mapping(target = "isOwned", ignore = true)

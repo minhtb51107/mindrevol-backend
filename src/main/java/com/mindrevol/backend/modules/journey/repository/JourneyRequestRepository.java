@@ -7,11 +7,15 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
+// [FIX] JpaRepository<..., Long> thay vì UUID
 @Repository
-public interface JourneyRequestRepository extends JpaRepository<JourneyRequest, UUID> {
-    Optional<JourneyRequest> findByJourneyIdAndUserId(UUID journeyId, Long userId);
-    List<JourneyRequest> findByJourneyIdAndStatus(UUID journeyId, RequestStatus status);
-	boolean existsByJourneyIdAndUserIdAndStatus(UUID id, Long id2, RequestStatus pending);
-}
+public interface JourneyRequestRepository extends JpaRepository<JourneyRequest, Long> {
+    
+    // [FIX] Tất cả UUID -> Long
+    Optional<JourneyRequest> findByJourneyIdAndUserId(Long journeyId, Long userId);
+    
+    List<JourneyRequest> findByJourneyIdAndStatus(Long journeyId, RequestStatus status);
+    
+    boolean existsByJourneyIdAndUserIdAndStatus(Long journeyId, Long userId, RequestStatus status);
+};

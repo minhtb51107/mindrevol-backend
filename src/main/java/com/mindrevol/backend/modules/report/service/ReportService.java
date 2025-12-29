@@ -21,7 +21,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
+// [FIX] Đã xóa import java.util.UUID
 
 @Service
 @RequiredArgsConstructor
@@ -44,7 +44,7 @@ public class ReportService {
 
         Report report = Report.builder()
                 .reporter(reporter)
-                .targetId(request.getTargetId())
+                .targetId(request.getTargetId()) // Vẫn lưu là String trong DB, nhưng nội dung là số Long
                 .targetType(request.getTargetType())
                 .reason(request.getReason())
                 .description(request.getDescription())
@@ -60,7 +60,7 @@ public class ReportService {
         return reportRepository.findByStatusOrderByCreatedAtAsc(ReportStatus.PENDING, pageable);
     }
 
-    // --- ADMIN: XỬ LÝ VI PHẠM (CORE LOGIC) ---
+    // --- ADMIN: XỬ LÝ VI PHẠM ---
     @Transactional
     public void resolveReport(Long reportId, Long handlerId, ResolveReportRequest request) {
         Report report = reportRepository.findById(reportId)
@@ -73,21 +73,17 @@ public class ReportService {
         User handler = userRepository.findById(handlerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Admin not found"));
 
-        // 1. Thực hiện hành động trừng phạt (nếu Admin chọn)
+        // 1. Thực hiện hành động trừng phạt
         if (request.getStatus() == ReportStatus.RESOLVED) {
-            
-            // A. Khóa tài khoản người vi phạm
             if (request.isBanUser()) {
                 banTargetUser(report.getTargetType(), report.getTargetId());
             }
-
-            // B. Xóa nội dung vi phạm
             if (request.isDeleteContent()) {
                 deleteTargetContent(report.getTargetType(), report.getTargetId());
             }
         }
 
-        // 2. Cập nhật trạng thái Report
+        // 2. Cập nhật trạng thái
         report.setStatus(request.getStatus());
         report.setAdminNote(request.getAdminNote());
         report.setHandler(handler);
@@ -99,20 +95,21 @@ public class ReportService {
     // --- HELPER METHODS ---
 
     private void banTargetUser(ReportTargetType type, String targetId) {
-        Long userIdToBan = null;
-
-        // Xác định ID người dùng cần Ban dựa trên đối tượng bị báo cáo
-        switch (type) {
-            case USER -> userIdToBan = Long.parseLong(targetId);
-            case CHECKIN -> checkinRepository.findById(UUID.fromString(targetId))
-                    .ifPresent(c -> banUserById(c.getUser().getId()));
-            case COMMENT -> commentRepository.findById(UUID.fromString(targetId))
-                    .ifPresent(c -> banUserById(c.getUser().getId()));
-            // Journey thì thường ban Creator, nhưng logic phức tạp nên tạm bỏ qua
-        }
-
-        if (userIdToBan != null) {
-            banUserById(userIdToBan);
+        try {
+            Long id = Long.parseLong(targetId); // [FIX] Parse Long
+            
+            switch (type) {
+                case USER -> banUserById(id);
+                case CHECKIN -> checkinRepository.findById(id)
+                        .ifPresent(c -> banUserById(c.getUser().getId()));
+                case COMMENT -> commentRepository.findById(id)
+                        .ifPresent(c -> banUserById(c.getUser().getId()));
+                // Case JOURNEY: Tùy logic, có thể ban creator
+                case JOURNEY -> journeyRepository.findById(id)
+                        .ifPresent(j -> banUserById(j.getCreator().getId()));
+            }
+        } catch (NumberFormatException e) {
+            log.error("Invalid target ID format for ban: {}", targetId);
         }
     }
 
@@ -126,46 +123,50 @@ public class ReportService {
 
     private void deleteTargetContent(ReportTargetType type, String targetId) {
         try {
+            Long id = Long.parseLong(targetId); // [FIX] Parse Long
+
             switch (type) {
                 case CHECKIN -> {
-                    UUID checkinId = UUID.fromString(targetId);
-                    if (checkinRepository.existsById(checkinId)) {
-                        checkinRepository.deleteById(checkinId);
-                        log.info("Deleted Checkin: {}", checkinId);
+                    if (checkinRepository.existsById(id)) {
+                        checkinRepository.deleteById(id);
+                        log.info("Deleted Checkin: {}", id);
                     }
                 }
                 case COMMENT -> {
-                	UUID commentId = UUID.fromString(targetId);
-                    if (commentRepository.existsById(commentId)) {
-                        commentRepository.deleteById(commentId);
-                        log.info("Deleted Comment: {}", commentId);
+                    if (commentRepository.existsById(id)) {
+                        commentRepository.deleteById(id);
+                        log.info("Deleted Comment: {}", id);
                     }
                 }
                 case JOURNEY -> {
-                    // Logic xóa Journey cần cẩn trọng (xóa nhóm là xóa hết data member)
-                    // Ở đây tạm thời chỉ hỗ trợ xóa Checkin/Comment
+                    // Cẩn trọng khi xóa Journey
                     log.warn("Auto-delete Journey is not supported yet via Report API.");
                 }
+                default -> log.warn("Unknown target type for delete: {}", type);
             }
+        } catch (NumberFormatException e) {
+            log.error("Invalid target ID format for delete: {}", targetId);
         } catch (Exception e) {
             log.error("Failed to delete content type {} id {}", type, targetId, e);
         }
     }
 
-    private void validateTargetId(ReportTargetType type, String id) {
+    private void validateTargetId(ReportTargetType type, String idStr) {
         try {
+            Long id = Long.parseLong(idStr); // [FIX] Parse Long
+            
             boolean exists = switch (type) {
-                case USER -> userRepository.existsById(Long.parseLong(id));
-                case CHECKIN -> checkinRepository.existsById(UUID.fromString(id));
-                case COMMENT -> commentRepository.existsById(UUID.fromString(id));
-                case JOURNEY -> journeyRepository.existsById(UUID.fromString(id));
+                case USER -> userRepository.existsById(id);
+                case CHECKIN -> checkinRepository.existsById(id);
+                case COMMENT -> commentRepository.existsById(id);
+                case JOURNEY -> journeyRepository.existsById(id);
             };
 
             if (!exists) {
                 throw new ResourceNotFoundException("Đối tượng không tồn tại: " + type + " ID=" + id);
             }
-        } catch (IllegalArgumentException e) {
-            throw new BadRequestException("ID đối tượng không hợp lệ: " + id);
+        } catch (NumberFormatException e) {
+            throw new BadRequestException("ID đối tượng không hợp lệ (Phải là số): " + idStr);
         }
     }
 }

@@ -3,21 +3,19 @@ package com.mindrevol.backend.modules.user.entity;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.auth.entity.SocialAccount;
-
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.SQLDelete;
 import org.hibernate.annotations.Where;
-// --- THÊM IMPORT NÀY ---
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.core.userdetails.UserDetails;
-import java.util.Collection;
-import java.util.stream.Collectors;
-// -----------------------
+
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 @Getter
 @Setter
@@ -31,7 +29,7 @@ import java.util.Set;
 })
 @SQLDelete(sql = "UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?")
 @Where(clause = "deleted_at IS NULL") 
-public class User extends BaseEntity implements UserDetails { // <--- [QUAN TRỌNG] implements UserDetails
+public class User extends BaseEntity implements UserDetails {
 
     @Column(nullable = false, unique = true, length = 100)
     private String email;
@@ -87,22 +85,19 @@ public class User extends BaseEntity implements UserDetails { // <--- [QUAN TR�
     @Builder.Default
     private Set<Role> roles = new HashSet<>();
     
+    // Vẫn giữ point để xếp hạng/đua top cho vui, nhưng không dùng để mua đồ nữa
     @Column(columnDefinition = "bigint default 0")
     @Builder.Default
     private Long points = 0L;
 
-    @Column(name = "freeze_streak_count", columnDefinition = "int default 0")
-    @Builder.Default
-    private Integer freezeStreakCount = 0;
-    
+    // [ĐÃ XÓA] freezeStreakCount
+
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private Set<SocialAccount> socialAccounts = new HashSet<>();
 
     @Version
     private Long version;
-
-    // --- [MỚI] Override các method của UserDetails ---
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
@@ -112,19 +107,13 @@ public class User extends BaseEntity implements UserDetails { // <--- [QUAN TR�
     }
 
     @Override
-    public String getUsername() {
-        return this.email; // Spring Security dùng email làm username
-    }
-
+    public String getUsername() { return this.email; }
     @Override
     public boolean isAccountNonExpired() { return true; }
-
     @Override
-    public boolean isAccountNonLocked() { return true; } // Hoặc check status != BLOCKED
-
+    public boolean isAccountNonLocked() { return true; }
     @Override
     public boolean isCredentialsNonExpired() { return true; }
-
     @Override
     public boolean isEnabled() { return this.status == UserStatus.ACTIVE; }
 }

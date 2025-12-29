@@ -2,51 +2,40 @@ package com.mindrevol.backend.modules.journey.mapper;
 
 import com.mindrevol.backend.modules.journey.dto.response.JourneyInvitationResponse;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
-import com.mindrevol.backend.modules.journey.dto.response.RoadmapStatusResponse;
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.entity.JourneyInvitation;
-import com.mindrevol.backend.modules.journey.entity.JourneyTask;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse; // Import này có thể khác tùy module user của bạn
+import org.springframework.stereotype.Component;
 
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
+@Component
+public class JourneyMapper {
 
-@Mapper(componentModel = "spring")
-public interface JourneyMapper {
+    public JourneyResponse toResponse(Journey journey) {
+        if (journey == null) return null;
 
-	@Mapping(target = "creatorId", source = "creator.id")
-    @Mapping(target = "creatorName", source = "creator.fullname")
-    @Mapping(target = "creatorAvatar", source = "creator.avatarUrl")
-    @Mapping(target = "participantCount", expression = "java(journey.getParticipants() != null ? journey.getParticipants().size() : 0)")
-    
-    // Map các trường setting (Tên field giống nhau nên MapStruct tự hiểu, nhưng khai báo cho chắc)
-    @Mapping(target = "hasStreak", source = "hasStreak")
-    @Mapping(target = "requiresFreezeTicket", source = "requiresFreezeTicket")
-    @Mapping(target = "isHardcore", source = "hardcore") // Lưu ý: Getter của boolean isHardcore thường là isHardcore()
-    @Mapping(target = "requireApproval", source = "requireApproval")
-    @Mapping(target = "interactionType", source = "interactionType")
-    @Mapping(target = "visibility", source = "visibility")
-    
-	@Mapping(target = "role", ignore = true)
-    @Mapping(target = "isJoined", ignore = true)   // <--- THÊM DÒNG NÀY
-    @Mapping(target = "inviteUrl", ignore = true)  // <--- THÊM DÒNG NÀY
-    
-    JourneyResponse toResponse(Journey journey);
+        return JourneyResponse.builder()
+                .id(journey.getId())
+                .name(journey.getName())
+                .description(journey.getDescription())
+                .startDate(journey.getStartDate())
+                .endDate(journey.getEndDate())
+                .visibility(journey.getVisibility())
+                .status(journey.getStatus())
+                .inviteCode(journey.getInviteCode())
+                .build();
+    }
 
-    @Mapping(target = "journeyId", source = "journey.id")
-    @Mapping(target = "journeyName", source = "journey.name")
-    @Mapping(target = "inviterName", source = "inviter.fullname")
-    @Mapping(target = "inviterAvatar", source = "inviter.avatarUrl")
-    @Mapping(target = "sentAt", source = "createdAt")
-    JourneyInvitationResponse toInvitationResponse(JourneyInvitation invitation);
+    public JourneyInvitationResponse toInvitationResponse(JourneyInvitation invitation) {
+        if (invitation == null) return null;
 
-    @Mapping(target = "taskId", source = "id")
-    @Mapping(target = "isCompleted", ignore = true)
-    RoadmapStatusResponse toRoadmapResponse(JourneyTask task);
-
-    // --- THÊM HÀM NÀY ĐỂ FIX LỖI ---
-    default LocalDateTime map(OffsetDateTime value) {
-        return value != null ? value.toLocalDateTime() : null;
+        return JourneyInvitationResponse.builder()
+                .id(invitation.getId())
+                .journeyId(invitation.getJourney().getId()) // Trả về Long ID
+                .journeyName(invitation.getJourney().getName())
+                .inviterName(invitation.getInviter().getFullname()) // Map thẳng tên String
+                .inviterAvatar(invitation.getInviter().getAvatarUrl()) // Map thẳng avatar String
+                .status(invitation.getStatus())
+                .sentAt(invitation.getCreatedAt())
+                .build();
     }
 }

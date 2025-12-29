@@ -1,12 +1,10 @@
 package com.mindrevol.backend.modules.gamification.job;
 
-import com.mindrevol.backend.modules.gamification.service.GamificationService;
 import com.mindrevol.backend.modules.journey.entity.JourneyParticipant;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
 import com.mindrevol.backend.modules.notification.entity.NotificationType;
 import com.mindrevol.backend.modules.notification.service.NotificationService;
 import com.mindrevol.backend.modules.user.entity.User;
-import com.mindrevol.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.redisson.api.RLock;
@@ -21,7 +19,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.ZoneId;
-import java.time.ZonedDateTime;
 import java.util.List;
 import java.util.concurrent.TimeUnit;
 
@@ -34,14 +31,8 @@ public class DailyStreakResetJob {
     private final JourneyParticipantRepository participantRepository;
     private final NotificationService notificationService;
     private final RedissonClient redissonClient;
-    private final UserRepository userRepository;
-    private final GamificationService gamificationService; 
 
-    /**
-     * Chạy mỗi giờ vào phút thứ 5 (00:05, 01:05, ..., 23:05).
-     * Mục đích: Xử lý cho các User vừa bước qua ngày mới ở múi giờ của họ.
-     */
-    @Scheduled(cron = "0 5 * * * ?")
+    @Scheduled(cron = "0 5 * * * ?") 
     public void processDailyStreakLogic() {
         String lockKey = "job:hourly_streak_process";
         RLock lock = redissonClient.getLock(lockKey);
@@ -50,15 +41,11 @@ public class DailyStreakResetJob {
             if (lock.tryLock(0, 10, TimeUnit.MINUTES)) {
                 log.info("Starting Hourly Streak Process Job...");
                 executeJobLogic();
-                log.info("Hourly Streak Process completed.");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Lock interrupted", e);
         } finally {
-            if (lock.isHeldByCurrentThread()) {
-                lock.unlock();
-            }
+            if (lock.isHeldByCurrentThread()) lock.unlock();
         }
     }
 
@@ -75,21 +62,18 @@ public class DailyStreakResetJob {
 
     @Transactional
     public boolean processBatch(Pageable pageable) {
-        // --- [SỬA ĐỔI] Sử dụng hàm query mới để chỉ lấy các hành trình chưa kết thúc ---
-        // Thay vì: participantRepository.findByCurrentStreakGreaterThan(0, pageable);
-        Slice<JourneyParticipant> slice = participantRepository.findActiveParticipantsWithStreak(0, pageable);
-        
+        Slice<JourneyParticipant> slice = participantRepository.findAll(pageable); 
         List<JourneyParticipant> participants = slice.getContent();
-
-        if (participants.isEmpty()) {
-            return false;
-        }
+        
+        if (participants.isEmpty()) return false;
 
         for (JourneyParticipant p : participants) {
             try {
-                processSingleParticipant(p);
+                if (p.getCurrentStreak() > 0) { 
+                    processSingleParticipant(p);
+                }
             } catch (Exception e) {
-                log.error("Error processing streak for participant {}", p.getId(), e);
+                log.error("Error streak participant {}", p.getId(), e);
             }
         }
         return slice.hasNext();
@@ -97,72 +81,31 @@ public class DailyStreakResetJob {
 
     private void processSingleParticipant(JourneyParticipant p) {
         User user = p.getUser();
-        String timezoneId = user.getTimezone() != null ? user.getTimezone() : "UTC";
-        
-        ZoneId zoneId;
-        try {
-            zoneId = ZoneId.of(timezoneId);
-        } catch (Exception e) {
-            zoneId = ZoneId.of("UTC");
-        }
-
+        ZoneId zoneId = ZoneId.of(user.getTimezone() != null ? user.getTimezone() : "UTC");
         LocalDate todayLocal = LocalDate.now(zoneId);
-        LocalDate lastCheckin = p.getLastCheckinAt();
+        LocalDate lastCheckin = p.getLastCheckinAt() != null ? p.getLastCheckinAt().toLocalDate() : null;
 
         if (lastCheckin == null) return;
 
-        // Logic: Nếu hôm nay là T, check-in cuối là T-2 (hoặc cũ hơn) -> ĐÃ MẤT CHUỖI
+        // Gap >= 2 (Vd: Checkin ngày 1, nay ngày 3 -> Miss ngày 2)
         long daysGap = java.time.temporal.ChronoUnit.DAYS.between(lastCheckin, todayLocal);
 
         if (daysGap >= 2) { 
-            // --- AUTO FREEZE LOGIC ---
-            boolean savedByFreeze = false;
+            // [HARDCORE MODE] Không cứu vãn, không đóng băng. Mất là mất.
+            int oldStreak = p.getCurrentStreak();
             
-            if (p.getJourney().isRequiresFreezeTicket() && user.getFreezeStreakCount() > 0) {
-                log.info("User {} missed check-in. Attempting auto-freeze...", user.getId());
-                
-                // 1. Trừ vé
-                user.setFreezeStreakCount(user.getFreezeStreakCount() - 1);
-                userRepository.save(user); 
-                
-                // 2. Coi như hôm qua đã check-in (bằng vé)
-                p.setLastCheckinAt(todayLocal.minusDays(1));
-                participantRepository.save(p);
-                
-                // 3. Thông báo
-                notificationService.sendAndSaveNotification(
-                    user.getId(),
-                    null,
-                    NotificationType.STREAK_SAVED,
-                    "Chuỗi đã được bảo vệ! ❄️",
-                    "Bạn quên check-in hôm qua, hệ thống đã tự động dùng 1 Vé đóng băng để giữ chuỗi.",
-                    p.getJourney().getId().toString(),
-                    null
-                );
-                
-                savedByFreeze = true;
-            }
+            p.setCurrentStreak(0);
+            participantRepository.save(p);
 
-            // --- NẾU KHÔNG CỨU ĐƯỢC -> RESET VÀ LƯU BACKUP ---
-            if (!savedByFreeze) {
-                int oldStreak = p.getCurrentStreak();
-                
-                // [MỚI] Lưu lại chuỗi cũ để cho phép user "Sửa sai"
-                p.setSavedStreak(oldStreak);
-                
-                p.setCurrentStreak(0);
-                participantRepository.save(p);
-
-                notificationService.sendAndSaveNotification(
-                        user.getId(),
-                        null,
-                        NotificationType.STREAK_LOST,
-                        "Rất tiếc, chuỗi đã đứt! 💔",
-                        "Bạn đã lỡ check-in. Bạn có 48h để dùng vé 'Sửa Chuỗi' để khôi phục lại " + oldStreak + " ngày.",
-                        p.getJourney().getId().toString(),
-                        null
-                );
-            }
+            // Gửi thông báo chia buồn
+            notificationService.sendAndSaveNotification(
+                    user.getId(), null, NotificationType.STREAK_LOST,
+                    "Chuỗi đã đứt! 💔",
+                    "Bạn đã lỡ check-in và mất chuỗi " + oldStreak + " ngày. Hãy bắt đầu lại nào!",
+                    p.getJourney().getId().toString(), null
+            );
+            
+            log.info("Reset streak for User {} in Journey {} (Was: {})", user.getId(), p.getJourney().getId(), oldStreak);
         }
     }
 }

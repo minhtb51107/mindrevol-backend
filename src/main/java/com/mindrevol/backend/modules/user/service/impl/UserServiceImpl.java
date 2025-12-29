@@ -55,7 +55,6 @@ public class UserServiceImpl implements UserService {
     private final JourneyRepository journeyRepository;
     private final JourneyMapper journeyMapper;
     
-    // --- Inject thêm các Repository mới ---
     private final UserSettingsRepository userSettingsRepository;
     private final SocialAccountRepository socialAccountRepository;
 
@@ -81,22 +80,18 @@ public class UserServiceImpl implements UserService {
     public UserProfileResponse updateProfile(String currentEmail, UpdateProfileRequest request) {
         User user = getUserByEmail(currentEmail);
         
-        // Sanitize input
         if (request.getFullname() != null) request.setFullname(sanitizationService.sanitizeStrict(request.getFullname()));
         if (request.getBio() != null) request.setBio(sanitizationService.sanitizeRichText(request.getBio()));
         
-        // Validate Handle
         if (request.getHandle() != null && !request.getHandle().equals(user.getHandle())) {
             if (userRepository.existsByHandle(request.getHandle())) 
                 throw new BadRequestException("Handle @" + request.getHandle() + " đã được sử dụng.");
         }
         
-        // Validate Timezone
         if (request.getTimezone() != null && !request.getTimezone().isEmpty()) {
             try { java.time.ZoneId.of(request.getTimezone()); user.setTimezone(request.getTimezone()); } catch (Exception e) {}
         }
         
-        // [MỚI] Map thủ công DateOfBirth và Gender để đảm bảo an toàn
         if (request.getDateOfBirth() != null) {
             user.setDateOfBirth(request.getDateOfBirth());
         }
@@ -126,13 +121,11 @@ public class UserServiceImpl implements UserService {
     public void deleteMyAccount(Long userId) {
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         long timestamp = System.currentTimeMillis();
-        // Đổi thông tin để ẩn danh trước khi xóa mềm (nếu dùng soft delete) hoặc hard delete
         user.setEmail(user.getEmail() + "_deleted_" + timestamp);
         user.setHandle(user.getHandle() + "_deleted_" + timestamp);
         userRepository.save(user);
         
-        // Xóa liên kết mạng xã hội
-        List<SocialAccount> socialAccounts = socialAccountRepository.findAllByUserId(userId); // Cần đảm bảo repo có method này
+        List<SocialAccount> socialAccounts = socialAccountRepository.findAllByUserId(userId);
         socialAccountRepository.deleteAll(socialAccounts);
         
         userRepository.deleteById(user.getId());
@@ -152,7 +145,8 @@ public class UserServiceImpl implements UserService {
                 .map(f -> friendshipMapper.toResponse(f, userId)) 
                 .collect(Collectors.toList());
 
-        var badges = userBadgeRepository.findByUserIdOrderByEarnedAtDesc(userId).stream()
+        // [FIX] Sửa EarnedAt -> CreatedAt
+        var badges = userBadgeRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(ub -> ub.getBadge().getName()).collect(Collectors.toList());
 
         return UserDataExport.builder()
@@ -192,14 +186,11 @@ public class UserServiceImpl implements UserService {
                 .collect(Collectors.toList());
     }
 
-    // --- CÁC METHOD MỚI CHO SETTINGS & SOCIAL ---
-
     @Override
-    @Transactional // <--- ĐÃ CÓ: Sửa lỗi 500 Insert Read-only
+    @Transactional
     public UserSettings getNotificationSettings(Long userId) {
         return userSettingsRepository.findByUserId(userId)
                 .orElseGet(() -> {
-                    // Nếu chưa có thì tạo mặc định
                     User user = getUserById(userId);
                     UserSettings settings = UserSettings.builder().user(user).build();
                     return userSettingsRepository.save(settings);
@@ -207,7 +198,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional // <--- ĐÃ CÓ
+    @Transactional
     public UserSettings updateNotificationSettings(Long userId, UpdateNotificationSettingsRequest request) {
         UserSettings settings = getNotificationSettings(userId);
 
@@ -231,8 +222,6 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public List<LinkedAccountResponse> getLinkedAccounts(Long userId) {
-        // Cần đảm bảo SocialAccountRepository có method findAllByUserId
-        // Nếu chưa có, hãy thêm vào Interface Repository: List<SocialAccount> findAllByUserId(Long userId);
         List<SocialAccount> accounts = socialAccountRepository.findAllByUserId(userId);
         return accounts.stream()
                 .map(acc -> LinkedAccountResponse.builder()
@@ -245,12 +234,10 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    @Transactional // <--- ĐÃ CÓ
+    @Transactional
     public void unlinkSocialAccount(Long userId, String provider) {
         User user = getUserById(userId);
         
-        // Kiểm tra an toàn: Không cho phép unlink nếu đây là phương thức đăng nhập duy nhất
-        // VÀ user chưa thiết lập mật khẩu (authProvider != LOCAL).
         boolean hasPassword = "LOCAL".equals(user.getAuthProvider());
         long socialCount = socialAccountRepository.countByUserId(userId);
 
@@ -263,8 +250,6 @@ public class UserServiceImpl implements UserService {
         
         socialAccountRepository.delete(account);
     }
-
-    // ---------------------------------------------
 
     private User getUserByEmail(String email) {
         return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));

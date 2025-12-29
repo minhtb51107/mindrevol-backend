@@ -20,17 +20,30 @@ public interface MessageRepository extends JpaRepository<Message, Long> {
 
     /**
      * Tìm tin nhắn mới nhất trong hội thoại
-     * [SỬA LỖI]: Trả về Optional<Message> thay vì Optional<User>
      */
     Optional<Message> findTopByConversationIdOrderByCreatedAtDesc(Long conversationId);
 
     /**
      * Đếm số tin nhắn chưa đọc trong 1 hội thoại (dành cho User hiện tại)
-     * Logic: Tin nhắn không phải của mình gửi (senderId != me) VÀ trạng thái chưa SEEN
+     * Logic: Tin nhắn không phải của mình gửi (sender.id != me) VÀ trạng thái chưa SEEN
      */
     @Query("SELECT COUNT(m) FROM Message m " +
            "WHERE m.conversation.id = :convId " +
-           "AND m.senderId <> :currentUserId " +
+           "AND m.sender.id <> :currentUserId " +  // [FIX] sender.id thay vì senderId
            "AND m.deliveryStatus <> 'SEEN'")
     long countUnreadMessages(@Param("convId") Long convId, @Param("currentUserId") Long currentUserId);
+
+    /**
+     * [MỚI] Tìm danh sách các tin nhắn chưa đọc để cập nhật status
+     * Lấy các tin trong hội thoại, không phải do mình gửi, và status khác SEEN
+     */
+    @Query("SELECT m FROM Message m " +
+           "WHERE m.conversation.id = :conversationId " +
+           "AND m.sender.id <> :userId " +          // [FIX] sender.id thay vì senderId
+           "AND m.deliveryStatus <> :status")
+    List<Message> findUnreadMessagesInConversation(
+        @Param("conversationId") Long conversationId, 
+        @Param("userId") Long userId, 
+        @Param("status") MessageDeliveryStatus status
+    );
 }

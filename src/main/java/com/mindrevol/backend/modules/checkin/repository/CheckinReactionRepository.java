@@ -9,18 +9,15 @@ import org.springframework.stereotype.Repository;
 
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
-public interface CheckinReactionRepository extends JpaRepository<CheckinReaction, UUID> { // Sửa ID thành UUID
+public interface CheckinReactionRepository extends JpaRepository<CheckinReaction, Long> { // [FIX] Long
 
-    // Tìm reaction cũ của user
-    Optional<CheckinReaction> findByCheckinIdAndUserId(UUID checkinId, Long userId);
+    // [FIX] UUID -> Long
+    Optional<CheckinReaction> findByCheckinIdAndUserId(Long checkinId, Long userId);
 
-    // Lấy danh sách reaction (JOIN FETCH user để tối ưu hiệu năng cho FacePile/Modal)
     @Query("SELECT r FROM CheckinReaction r JOIN FETCH r.user WHERE r.checkin.id = :checkinId ORDER BY r.createdAt DESC")
-    List<CheckinReaction> findLatestByCheckinId(@Param("checkinId") UUID checkinId, Pageable pageable);
+    List<CheckinReaction> findLatestByCheckinId(@Param("checkinId") Long checkinId, Pageable pageable);
 
-    // Đếm tổng số reaction
-    long countByCheckinId(UUID checkinId);
+    long countByCheckinId(Long checkinId);
 }

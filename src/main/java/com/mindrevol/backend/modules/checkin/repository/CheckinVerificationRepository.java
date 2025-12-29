@@ -6,19 +6,18 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.util.UUID;
-
+// [FIX] Extends Long
 @Repository
-public interface CheckinVerificationRepository extends JpaRepository<CheckinVerification, UUID> {
+public interface CheckinVerificationRepository extends JpaRepository<CheckinVerification, Long> {
     
-    // Đếm số phiếu CHẤP THUẬN cho 1 bài check-in
+    // [FIX] checkinId UUID -> Long
     @Query("SELECT COUNT(v) FROM CheckinVerification v WHERE v.checkin.id = :checkinId AND v.isApproved = true")
-    long countApprovals(@Param("checkinId") UUID checkinId);
+    long countApprovals(@Param("checkinId") Long checkinId);
 
-    // Đếm số phiếu TỪ CHỐI cho 1 bài check-in
+    // [FIX] checkinId UUID -> Long
     @Query("SELECT COUNT(v) FROM CheckinVerification v WHERE v.checkin.id = :checkinId AND v.isApproved = false")
-    long countRejections(@Param("checkinId") UUID checkinId);
+    long countRejections(@Param("checkinId") Long checkinId);
 
-    // Kiểm tra xem user này đã vote cho bài này chưa
-    boolean existsByCheckinIdAndVoterId(UUID checkinId, Long voterId);
+    // [FIX] checkinId UUID -> Long
+    boolean existsByCheckinIdAndVoterId(Long checkinId, Long voterId);
 }

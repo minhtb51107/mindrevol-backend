@@ -10,9 +10,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public interface HabitRepository extends JpaRepository<Habit, UUID> {
+public interface HabitRepository extends JpaRepository<Habit, Long> {
     
     List<Habit> findByUserIdAndArchivedFalse(Long userId);
 
-    Optional<Habit> findByUserIdAndJourneyId(Long userId, UUID journeyId);
+    Optional<Habit> findByUserIdAndJourneyId(Long userId, Long journeyId);
 }

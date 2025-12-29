@@ -4,6 +4,7 @@ import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 import java.time.LocalDateTime;
 
 @Entity
@@ -15,12 +16,10 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder // [FIX] Dùng SuperBuilder
 public class Conversation extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    // [FIX] Đã xóa @Id Long id (BaseEntity đã có)
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user1_id", nullable = false)
@@ -47,7 +46,6 @@ public class Conversation extends BaseEntity {
     @Column(name = "user2_last_read_msg_id")
     private Long user2LastReadMessageId;
 
-    // --- [THÊM MỚI] Status ---
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     @Builder.Default

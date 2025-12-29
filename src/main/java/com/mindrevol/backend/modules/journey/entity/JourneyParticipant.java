@@ -1,60 +1,47 @@
 package com.mindrevol.backend.modules.journey.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Entity
-@Table(name = "journey_participants", 
-    uniqueConstraints = {@UniqueConstraint(columnNames = {"journey_id", "user_id"})},
-    indexes = {
-        @Index(name = "idx_participant_user", columnList = "user_id"),
-        @Index(name = "idx_participant_journey_user", columnList = "journey_id, user_id") 
-    }
-)
+@Table(name = "journey_participants")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class JourneyParticipant {
+@SuperBuilder
+public class JourneyParticipant extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
-
+    // [FIX] Dùng quan hệ Object để JPA tự Join, thay vì dùng Long ID rời rạc
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "journey_id", nullable = false)
-    @ToString.Exclude 
     private Journey journey;
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    @ToString.Exclude 
     private User user;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private JourneyRole role = JourneyRole.MEMBER; 
+    private JourneyRole role = JourneyRole.MEMBER;
 
     @Column(name = "joined_at", nullable = false)
-    @Builder.Default
-    private LocalDateTime joinedAt = LocalDateTime.now();
+    private LocalDateTime joinedAt;
 
     @Column(name = "current_streak")
     @Builder.Default
-    private Integer currentStreak = 0;
-    
-    @Column(name = "last_checkin_at")
-    private LocalDate lastCheckinAt;
+    private int currentStreak = 0;
 
-    // --- [MỚI] Trường lưu chuỗi dự phòng để Repair (Sửa sai) ---
-    @Column(name = "saved_streak")
+    @Column(name = "total_checkins")
     @Builder.Default
-    private Integer savedStreak = 0;
+    private int totalCheckins = 0;
+
+    @Column(name = "last_checkin_at")
+    private LocalDateTime lastCheckinAt;
 }

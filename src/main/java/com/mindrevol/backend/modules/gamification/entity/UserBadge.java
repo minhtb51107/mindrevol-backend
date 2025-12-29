@@ -1,14 +1,12 @@
 package com.mindrevol.backend.modules.gamification.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
+import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
+import lombok.experimental.SuperBuilder;
 
-import com.mindrevol.backend.modules.user.entity.User;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
+// [FIX] Đã xóa import java.util.UUID;
 
 @Entity
 @Table(name = "user_badges")
@@ -16,24 +14,19 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-@EntityListeners(AuditingEntityListener.class)
-public class UserBadge {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+@SuperBuilder
+public class UserBadge extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @ManyToOne(fetch = FetchType.EAGER) // Load luôn Badge để hiển thị
+    @ManyToOne(fetch = FetchType.EAGER)
     @JoinColumn(name = "badge_id", nullable = false)
     private Badge badge;
 
     @Column(name = "journey_id")
-    private UUID journeyId;
-
-    @CreatedDate
-    private LocalDateTime earnedAt;
+    private Long journeyId; 
+    
+    // createdAt có sẵn trong BaseEntity
 }

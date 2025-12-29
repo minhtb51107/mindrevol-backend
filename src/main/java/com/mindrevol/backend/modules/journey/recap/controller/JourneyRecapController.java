@@ -16,8 +16,6 @@ import org.springframework.data.web.PageableDefault;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/v1/journeys")
 @RequiredArgsConstructor
@@ -27,16 +25,15 @@ public class JourneyRecapController {
     private final JourneyRecapService journeyRecapService;
     private final UserService userService;
 
+    // [FIX] UUID -> Long
     @GetMapping("/{id}/recap")
     @Operation(summary = "Lấy album ảnh/bài đăng của user trong hành trình (Dạng Instagram Grid)")
     public ResponseEntity<ApiResponse<Page<CheckinResponse>>> getMyJourneyRecap(
-            @PathVariable UUID id,
+            @PathVariable Long id,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
         User currentUser = userService.getUserById(SecurityUtils.getCurrentUserId());
-        
         Page<CheckinResponse> recapFeed = journeyRecapService.getUserRecapFeed(id, currentUser, pageable);
-
         return ResponseEntity.ok(ApiResponse.success(recapFeed));
     }
 }

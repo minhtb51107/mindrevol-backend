@@ -17,7 +17,6 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.OffsetDateTime;
 import java.util.Comparator;
 import java.util.List;
-import java.util.Optional;
 
 @Component
 @RequiredArgsConstructor
@@ -35,22 +34,22 @@ public class UserCleanupJob {
     public void cleanupDeletedUsers() {
         log.info("Starting User Cleanup Job...");
 
-        // 1. Tìm các user đã xóa mềm quá 30 ngày
+        // 1. Tìm các user đã xóa mềm quá 30 ngày (logic này tùy repo user của bạn có chưa)
         OffsetDateTime cutoffDate = OffsetDateTime.now().minusDays(30);
+        
+        // Giả sử repository user có hàm này, nếu chưa có thì bạn cần thêm vào UserRepository
         List<User> usersToDelete = userRepository.findUsersReadyForHardDelete(cutoffDate);
 
         log.info("Found {} users ready for hard delete.", usersToDelete.size());
 
         for (User user : usersToDelete) {
             try {
-                // --- BƯỚC MỚI: Xử lý các Journey do User này làm chủ ---
+                // Xử lý các Journey do User này làm chủ trước khi xóa user
                 handleJourneySuccession(user);
-                // ------------------------------------------------------
 
-                // 2. Xóa Avatar trên MinIO/Cloud
+                // 2. Xóa Avatar
                 if (user.getAvatarUrl() != null && !user.getAvatarUrl().isEmpty()) {
                     fileStorageService.deleteFile(user.getAvatarUrl());
-                    log.info("Deleted avatar for user {}", user.getId());
                 }
 
                 // 3. Xóa vĩnh viễn khỏi Database
@@ -65,22 +64,22 @@ public class UserCleanupJob {
         log.info("User Cleanup Job completed.");
     }
 
-    // Logic chuyển giao quyền lực hoặc giải tán nhóm
     private void handleJourneySuccession(User userToDelete) {
+        // [FIX] Cần thêm hàm findByCreatorId vào JourneyRepository (xem bên dưới)
         List<Journey> ownedJourneys = journeyRepository.findByCreatorId(userToDelete.getId());
         
         for (Journey journey : ownedJourneys) {
             log.info("Processing succession for Journey: {}", journey.getId());
             
-            // Tìm tất cả thành viên CÒN LẠI của nhóm (trừ người sắp xóa)
+            // Tìm tất cả thành viên CÒN LẠI
             List<JourneyParticipant> remainingParticipants = journeyParticipantRepository.findAllByJourneyId(journey.getId())
                     .stream()
                     .filter(p -> !p.getUser().getId().equals(userToDelete.getId()))
-                    .sorted(Comparator.comparing(JourneyParticipant::getJoinedAt)) // Người vào sớm nhất lên làm chủ
+                    .sorted(Comparator.comparing(JourneyParticipant::getJoinedAt)) // Người cũ nhất lên thay
                     .toList();
 
             if (remainingParticipants.isEmpty()) {
-                // Nhóm không còn ai khác -> Xóa nhóm luôn
+                // Nhóm không còn ai -> Xóa nhóm
                 log.info("Journey {} has no other members. Deleting.", journey.getId());
                 journeyRepository.delete(journey);
             } else {
@@ -91,8 +90,8 @@ public class UserCleanupJob {
                 journey.setCreator(heir.getUser());
                 journeyRepository.save(journey);
                 
-                // 2. Nâng cấp quyền của người thừa kế lên ADMIN
-                heir.setRole(JourneyRole.ADMIN);
+                // 2. [FIX] ADMIN -> OWNER
+                heir.setRole(JourneyRole.OWNER);
                 journeyParticipantRepository.save(heir);
                 
                 log.info("Transferred ownership of Journey {} to User {}", journey.getId(), heir.getUser().getId());

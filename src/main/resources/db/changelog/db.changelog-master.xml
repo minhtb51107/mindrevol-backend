@@ -1,65 +1,13 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<databaseChangeLog
-        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
-        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
-        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-latest.xsd">
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
 
-    <include file="changes/001-initial-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/002-add-audit-fields.xml" relativeToChangelogFile="true"/>
-    
-    <include file="changes/003-create-journey-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/004-create-checkin-schema.xml" relativeToChangelogFile="true"/>
-
-    <include file="changes/005-create-chat-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/006-create-gamification-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/007-create-habit-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/008-create-reactions-table.xml" relativeToChangelogFile="true"/>
-    <include file="changes/009-add-fcm-token.xml" relativeToChangelogFile="true"/>
-    <include file="changes/010-link-habit-to-journey.xml" relativeToChangelogFile="true"/>
-    <include file="changes/011-update-reactions-voice.xml" relativeToChangelogFile="true"/>
-    <include file="changes/012-add-last-checkin-to-participants.xml" relativeToChangelogFile="true"/>
-
-    <include file="changes/013-create-store-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/014-create-report-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/015-create-notification-schema.xml" relativeToChangelogFile="true"/>
-
-    <include file="changes/016-create-journey-extras.xml" relativeToChangelogFile="true"/>
-    <include file="changes/017-create-friendship-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/018-add-task-to-checkin.xml" relativeToChangelogFile="true"/>
-    <include file="changes/019-fix-conversation-audit.xml" relativeToChangelogFile="true"/>
-    <include file="changes/020-fix-missing-audit-columns.xml" relativeToChangelogFile="true"/>
-    <include file="changes/021-create-point-history-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/022-add-gamification-fields-to-users.xml" relativeToChangelogFile="true"/>
-    
-    <include file="changes/023-add-journey-settings.xml" relativeToChangelogFile="true"/>
-    <include file="changes/024-add-interaction-type.xml" relativeToChangelogFile="true"/>
-    <include file="changes/025-create-checkin-comments.xml" relativeToChangelogFile="true"/>
-    <include file="changes/026-add-user-version.xml" relativeToChangelogFile="true"/>
-    <include file="changes/027-add-compliance-fields.xml" relativeToChangelogFile="true"/>
-
-    <include file="changes/027-enable-hard-delete.xml" relativeToChangelogFile="true"/>
-    <include file="changes/028-create-user-blocks.xml" relativeToChangelogFile="true"/>
-    
-    <include file="changes/029-add-timezone-to-users.xml" relativeToChangelogFile="true"/>
-    <include file="changes/030-add-private-journey.xml" relativeToChangelogFile="true"/>
-    <include file="changes/031-add-checkin-visibility.xml" relativeToChangelogFile="true"/>
-    
-    <include file="changes/032-add-journey-templates.xml" relativeToChangelogFile="true"/>
-    <include file="changes/033-add-verification.xml" relativeToChangelogFile="true"/>
-    <include file="changes/034-add-saved-streak.xml" relativeToChangelogFile="true"/>
-    
-    <include file="changes/035-create-payment-transactions.xml" relativeToChangelogFile="true"/>
-    <include file="changes/036-create-otp-tokens.xml" relativeToChangelogFile="true"/>
-    <include file="changes/037-update-user-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/038-add-journey-visibility.xml" relativeToChangelogFile="true"/>
-    <include file="changes/039-update-chat-schema.xml" relativeToChangelogFile="true"/>
-    <include file="changes/040-add-audit-to-messages.xml" relativeToChangelogFile="true"/>
-    <include file="changes/041-add-receiver-id-to-messages.xml" relativeToChangelogFile="true"/>
-    <include file="changes/042-update-reaction-to-emoji-string.xml" relativeToChangelogFile="true"/>
-    
-    <include file="changes/043-add-verification-fields.xml" relativeToChangelogFile="true"/>
-    <include file="changes/044-add-checkin-date.xml" relativeToChangelogFile="true"/>
-    <include file="changes/045-create-system-and-settings-schema.xml" relativeToChangelogFile="true"/>
+    <include file="modules/001-user-auth.xml" relativeToChangelogFile="true"/>
+    <include file="modules/002-system.xml" relativeToChangelogFile="true"/>
+    <include file="modules/003-journey.xml" relativeToChangelogFile="true"/>
+    <include file="modules/004-checkin.xml" relativeToChangelogFile="true"/>
+    <include file="modules/005-habit-gamification.xml" relativeToChangelogFile="true"/>
+    <include file="modules/006-social-ops.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

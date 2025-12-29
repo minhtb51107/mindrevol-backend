@@ -11,8 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.UUID;
-
 @RestController
 @RequestMapping("/api/v1/verifications")
 @RequiredArgsConstructor
@@ -21,16 +19,13 @@ public class VerificationController {
     private final VerificationService verificationService;
     private final UserService userService;
 
-    // API để User vote cho một bài Check-in
-    // Endpoint: POST /api/v1/verifications/{checkinId}/vote
-    // Body: { "isApproved": false } -> Báo cáo bài này là Fake
+    // [FIX] UUID -> Long
     @PostMapping("/{checkinId}/vote")
     public ResponseEntity<ApiResponse<Void>> castVote(
-            @PathVariable UUID checkinId,
+            @PathVariable Long checkinId,
             @Valid @RequestBody VoteRequest request) {
         
         Long currentUserId = SecurityUtils.getCurrentUserId();
-        // Lấy User Entity đầy đủ để truyền xuống Service
         User currentUser = userService.getUserById(currentUserId);
         
         verificationService.castVote(checkinId, currentUser, request.getIsApproved());

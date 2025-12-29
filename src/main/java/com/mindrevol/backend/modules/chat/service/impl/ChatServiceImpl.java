@@ -42,20 +42,31 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional
     public MessageResponse sendMessage(Long senderId, SendMessageRequest request) {
-        Long receiverId = request.getReceiverId();
+        // Giả sử request có receiverId. Nếu request có conversationId thì cần logic khác.
+        Long receiverId = request.getReceiverId(); 
+        
+        if (receiverId == null) {
+             throw new BadRequestException("Receiver ID không được để trống");
+        }
 
         if (userBlockService.isBlocked(receiverId, senderId)) {
             throw new BadRequestException("Bạn không thể gửi tin nhắn cho người này.");
         }
 
-        // [CẬP NHẬT] Sử dụng hàm tìm kiếm chính xác 1-1
-        Conversation conversation = conversationRepository.findByUsers(senderId, receiverId)
-                .orElseGet(() -> createNewConversation(senderId, receiverId));
+        // 1. Lấy User Object (Proxy) để gán vào Message Entity
+        User sender = userRepository.getReferenceById(senderId);
+        User receiver = userRepository.getReferenceById(receiverId);
 
+        // 2. Tìm hoặc tạo Conversation
+        // Lưu ý: findByUsers trả về Conversation Entity
+        Conversation conversation = conversationRepository.findByUsers(senderId, receiverId)
+                .orElseGet(() -> createNewConversation(sender, receiver)); // [FIX] Truyền User object vào
+
+        // 3. Tạo Message
         Message message = Message.builder()
                 .conversation(conversation)
-                .senderId(senderId)
-                .receiverId(receiverId)
+                .sender(sender)      // [FIX] .senderId(Long) -> .sender(User)
+                .receiver(receiver)  // [FIX] .receiverId(Long) -> .receiver(User)
                 .content(request.getContent())
                 .type(request.getType() != null ? request.getType() : MessageType.TEXT)
                 .metadata(request.getMetadata())
@@ -65,6 +76,7 @@ public class ChatServiceImpl implements ChatService {
 
         message = messageRepository.save(message);
 
+        // 4. Update Conversation Metadata
         String previewContent = message.getType() == MessageType.IMAGE ? "[Hình ảnh]" : message.getContent();
         conversation.setLastMessageContent(previewContent);
         conversation.setLastMessageAt(LocalDateTime.now());
@@ -72,6 +84,7 @@ public class ChatServiceImpl implements ChatService {
         
         conversationRepository.save(conversation);
 
+        // 5. Response & Socket
         MessageResponse response = chatMapper.toResponse(message);
 
         messagingTemplate.convertAndSendToUser(
@@ -83,14 +96,13 @@ public class ChatServiceImpl implements ChatService {
         return response;
     }
 
-    private Conversation createNewConversation(Long senderId, Long receiverId) {
-        User sender = userRepository.findById(senderId).orElseThrow();
-        User receiver = userRepository.findById(receiverId).orElseThrow();
-
+    // [FIX] Nhận User object thay vì Long để tránh query lại DB
+    private Conversation createNewConversation(User sender, User receiver) {
         Conversation conv = Conversation.builder()
                 .user1(sender)
                 .user2(receiver)
                 .lastMessageAt(LocalDateTime.now())
+                .status(ConversationStatus.ACTIVE) // Đảm bảo có status
                 .build();
         
         return conversationRepository.save(conv);
@@ -99,10 +111,10 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> getUserConversations(Long userId) {
-        // [QUAN TRỌNG] Gọi hàm findValidConversationsByUserId để lọc bỏ user bị chặn
         List<Conversation> conversations = conversationRepository.findValidConversationsByUserId(userId);
 
         return conversations.stream().map(conv -> {
+            // Xác định partner
             User partnerEntity = conv.getUser1().getId().equals(userId) ? conv.getUser2() : conv.getUser1();
             
             boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
@@ -139,7 +151,6 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional(readOnly = true)
     public Page<MessageResponse> getMessagesWithUser(Long currentUserId, Long partnerId, Pageable pageable) {
-        // [CẬP NHẬT] Sử dụng hàm tìm kiếm chính xác
         Conversation conversation = conversationRepository.findByUsers(currentUserId, partnerId)
                 .orElseThrow(() -> new ResourceNotFoundException("Chưa có cuộc trò chuyện nào."));
         
@@ -152,6 +163,21 @@ public class ChatServiceImpl implements ChatService {
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Conversation not found"));
 
+        // 1. Cập nhật Status các tin nhắn chưa đọc
+        List<Message> unreadMessages = messageRepository.findUnreadMessagesInConversation(
+                conversationId, 
+                userId, 
+                MessageDeliveryStatus.SEEN
+        );
+
+        if (!unreadMessages.isEmpty()) {
+            unreadMessages.forEach(msg -> {
+                msg.setDeliveryStatus(MessageDeliveryStatus.SEEN);
+            });
+            messageRepository.saveAll(unreadMessages);
+        }
+
+        // 2. Cập nhật LastReadMessageId
         Message lastMessage = messageRepository.findTopByConversationIdOrderByCreatedAtDesc(conversationId)
                 .orElse(null);
 
@@ -193,29 +219,25 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional
     public ConversationResponse getOrCreateConversation(Long senderId, Long receiverId) {
-        // 1. Kiểm tra xem đã chặn nhau chưa (dùng lại logic của UserBlockService)
         if (userBlockService.isBlocked(receiverId, senderId) || userBlockService.isBlocked(senderId, receiverId)) {
             throw new BadRequestException("Không thể bắt đầu cuộc trò chuyện do chặn người dùng.");
         }
+        
+        // Dùng getReferenceById để tối ưu nếu cần tạo mới
+        User sender = userRepository.getReferenceById(senderId);
+        User receiver = userRepository.getReferenceById(receiverId);
 
-        // 2. Tìm cuộc hội thoại đã tồn tại (Dùng hàm findByUsers đã có trong Repo)
-        // Nếu chưa có thì gọi hàm createNewConversation (đã có ở cuối file service của bạn)
         Conversation conversation = conversationRepository.findByUsers(senderId, receiverId)
-                .orElseGet(() -> createNewConversation(senderId, receiverId));
+                .orElseGet(() -> createNewConversation(sender, receiver));
 
-        // 3. Map Entity sang Response (Logic này lấy từ getUserConversations để đảm bảo giống format)
         return mapToConversationResponse(conversation, senderId);
     }
 
-    // --- Helper để map dữ liệu (tránh lặp code) ---
     private ConversationResponse mapToConversationResponse(Conversation conv, Long currentUserId) {
-        // Xác định ai là người đối diện (Partner)
         User partnerEntity = conv.getUser1().getId().equals(currentUserId) ? conv.getUser2() : conv.getUser1();
         
-        // Kiểm tra Online
         boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
 
-        // Map thông tin Partner
         UserSummaryResponse partnerDto = UserSummaryResponse.builder()
             .id(partnerEntity.getId())
             .fullname(partnerEntity.getFullname())
@@ -224,7 +246,6 @@ public class ChatServiceImpl implements ChatService {
             .isOnline(isOnline)
             .build();
 
-        // Đếm tin nhắn chưa đọc
         long unread = messageRepository.countUnreadMessages(conv.getId(), currentUserId);
 
         return ConversationResponse.builder()
@@ -234,7 +255,7 @@ public class ChatServiceImpl implements ChatService {
                 .lastMessageAt(conv.getLastMessageAt())
                 .lastSenderId(conv.getLastSenderId())
                 .unreadCount(unread)
-                .status(conv.getStatus() != null ? conv.getStatus().name() : "ACTIVE") // Dùng Enum thực tế ACTIVE
+                .status(conv.getStatus() != null ? conv.getStatus().name() : "ACTIVE")
                 .build();
     }
 }

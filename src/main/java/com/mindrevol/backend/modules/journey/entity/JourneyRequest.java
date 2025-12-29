@@ -1,14 +1,10 @@
 package com.mindrevol.backend.modules.journey.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.annotation.LastModifiedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.LocalDateTime;
-import java.util.UUID;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "journey_requests")
@@ -16,12 +12,11 @@ import java.util.UUID;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-@EntityListeners(AuditingEntityListener.class)
-public class JourneyRequest {
-    @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    private UUID id;
+@SuperBuilder // Dùng SuperBuilder để kế thừa builder từ BaseEntity
+public class JourneyRequest extends BaseEntity {
+
+    // [QUAN TRỌNG] Đã xóa trường @Id private UUID id; 
+    // Vì nó sẽ dùng ID Long từ BaseEntity
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "journey_id", nullable = false)
@@ -33,11 +28,8 @@ public class JourneyRequest {
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private RequestStatus status;
-
-    @CreatedDate
-    private LocalDateTime createdAt;
-
-    @LastModifiedDate
-    private LocalDateTime updatedAt;
+    @Builder.Default
+    private RequestStatus status = RequestStatus.PENDING;
+    
+    // Các trường createdAt, updatedAt đã có sẵn trong BaseEntity nên không cần khai báo lại
 }

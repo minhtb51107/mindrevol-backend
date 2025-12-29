@@ -1,0 +1,127 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+    <changeSet id="001-create-roles" author="mindrevol">
+        <createTable tableName="roles">
+            <column name="id" type="INT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="name" type="VARCHAR(50)"><constraints nullable="false" unique="true"/></column>
+            <column name="description" type="VARCHAR(255)"/>
+        </createTable>
+    </changeSet>
+    <changeSet id="001-create-users" author="mindrevol">
+        <createTable tableName="users">
+           <column name="id" type="BIGINT"> <constraints primaryKey="true" nullable="false"/></column>
+            <column name="email" type="VARCHAR(100)"><constraints nullable="false" unique="true"/></column>
+            <column name="password" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="status" type="VARCHAR(20)" defaultValue="PENDING_ACTIVATION"><constraints nullable="false"/></column>
+            <column name="handle" type="VARCHAR(50)"><constraints nullable="false" unique="true"/></column>
+            <column name="fullname" type="VARCHAR(100)"><constraints nullable="false"/></column>
+            <column name="date_of_birth" type="DATE"/>
+            <column name="avatar_url" type="VARCHAR(500)"/>
+            <column name="bio" type="VARCHAR(255)"/>
+            <column name="website" type="VARCHAR(255)"/>
+            <column name="auth_provider" type="VARCHAR(20)" defaultValue="LOCAL"/>
+            <column name="fcm_token" type="VARCHAR(255)"/>
+            <column name="timezone" type="VARCHAR(50)" defaultValue="UTC"><constraints nullable="false"/></column>
+            <column name="gender" type="VARCHAR(20)"/>
+            <column name="points" type="BIGINT" defaultValue="0"/>
+            <column name="version" type="BIGINT"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="created_by" type="BIGINT"/>
+            <column name="last_modified_by" type="BIGINT"/>
+            <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+        <createIndex indexName="idx_user_email" tableName="users"><column name="email"/></createIndex>
+        <createIndex indexName="idx_user_handle" tableName="users"><column name="handle"/></createIndex>
+    </changeSet>
+    <changeSet id="001-create-user-roles" author="mindrevol">
+        <createTable tableName="user_roles">
+            <column name="user_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_ur_user" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="role_id" type="INT"><constraints nullable="false" foreignKeyName="fk_ur_role" referencedTableName="roles" referencedColumnNames="id"/></column>
+        </createTable>
+        <addPrimaryKey columnNames="user_id, role_id" tableName="user_roles"/>
+    </changeSet>
+    <changeSet id="001-create-user-settings" author="mindrevol">
+        <createTable tableName="user_settings">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="user_id" type="BIGINT"><constraints nullable="false" unique="true" foreignKeyName="fk_us_user" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="email_daily_reminder" type="BOOLEAN" defaultValue="true"/>
+            <column name="email_updates" type="BOOLEAN" defaultValue="true"/>
+            <column name="push_friend_request" type="BOOLEAN" defaultValue="true"/>
+            <column name="push_new_comment" type="BOOLEAN" defaultValue="true"/>
+            <column name="push_journey_invite" type="BOOLEAN" defaultValue="true"/>
+            <column name="push_reaction" type="BOOLEAN" defaultValue="true"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="created_by" type="BIGINT"/>
+            <column name="last_modified_by" type="BIGINT"/>
+            <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+    </changeSet>
+    <changeSet id="001-create-friendships" author="mindrevol">
+        <createTable tableName="friendships">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="requester_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_friend_req" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="addressee_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_friend_addr" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="status" type="VARCHAR(20)"><constraints nullable="false"/></column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="created_by" type="BIGINT"/>
+            <column name="last_modified_by" type="BIGINT"/>
+            <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+        <addUniqueConstraint columnNames="requester_id, addressee_id" constraintName="uk_friendship" tableName="friendships"/>
+    </changeSet>
+    <changeSet id="001-create-auth-tokens" author="mindrevol">
+        <createTable tableName="otp_tokens">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="otp_code" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="user_id" type="BIGINT"><constraints nullable="false" unique="true" foreignKeyName="fk_otp_user" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="expires_at" type="TIMESTAMP WITH TIME ZONE"><constraints nullable="false"/></column>
+            <column name="retry_count" type="INT" defaultValue="0"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="password_reset_tokens">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="token" type="VARCHAR(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="user_id" type="BIGINT"><constraints nullable="false" unique="true" foreignKeyName="fk_prt_user" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="expires_at" type="TIMESTAMP WITH TIME ZONE"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="user_activation_tokens">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="token" type="VARCHAR(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="user_id" type="BIGINT"><constraints nullable="false" unique="true" foreignKeyName="fk_uat_user" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="expires_at" type="TIMESTAMP WITH TIME ZONE"><constraints nullable="false"/></column>
+        </createTable>
+        <createTable tableName="magic_link_tokens">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="token" type="VARCHAR(255)"><constraints nullable="false" unique="true"/></column>
+            <column name="user_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_mlt_user" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="expires_at" type="TIMESTAMP WITH TIME ZONE"><constraints nullable="false"/></column>
+        </createTable>
+    </changeSet>
+    <changeSet id="001-create-social-accounts" author="mindrevol">
+        <createTable tableName="social_accounts">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="user_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_sa_user" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="provider" type="VARCHAR(50)"><constraints nullable="false"/></column>
+            <column name="provider_id" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="email" type="VARCHAR(255)"/>
+            <column name="avatar_url" type="VARCHAR(500)"/>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
+            <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
+            <column name="created_by" type="BIGINT"/>
+            <column name="last_modified_by" type="BIGINT"/>
+            <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
+        </createTable>
+        <addUniqueConstraint columnNames="provider, provider_id" constraintName="uk_social_acc" tableName="social_accounts"/>
+    </changeSet>
+    <changeSet id="001-create-user-blocks" author="mindrevol">
+        <createTable tableName="user_blocks">
+            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="blocker_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_block_blocker" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="blocked_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_block_blocked" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"/>
+        </createTable>
+        <addUniqueConstraint columnNames="blocker_id, blocked_id" constraintName="uk_user_block" tableName="user_blocks"/>
+    </changeSet>
+</databaseChangeLog>

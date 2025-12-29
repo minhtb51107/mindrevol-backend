@@ -45,7 +45,7 @@ public class HabitController {
     // Đánh dấu hoàn thành (Check-in nhanh không cần ảnh)
     @PostMapping("/{habitId}/complete")
     public ResponseEntity<ApiResponse<Void>> completeHabit(
-            @PathVariable UUID habitId,
+            @PathVariable Long habitId,
             @AuthenticationPrincipal User user) {
         habitService.markHabitCompleted(habitId, null, user);
         return ResponseEntity.ok(ApiResponse.success("Đã hoàn thành thói quen"));
@@ -54,7 +54,7 @@ public class HabitController {
     // Đánh dấu thất bại (Fail)
     @PostMapping("/{habitId}/fail")
     public ResponseEntity<ApiResponse<Void>> failHabit(
-            @PathVariable UUID habitId,
+            @PathVariable Long habitId,
             @AuthenticationPrincipal User user) {
         habitService.markHabitFailed(habitId, user);
         return ResponseEntity.ok(ApiResponse.success("Đã ghi nhận trạng thái"));

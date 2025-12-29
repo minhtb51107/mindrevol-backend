@@ -5,7 +5,7 @@ import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailR
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.entity.CheckinReaction;
 import com.mindrevol.backend.modules.checkin.mapper.ReactionMapper;
-import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository; // Import mới
+import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
 import com.mindrevol.backend.modules.checkin.repository.CheckinReactionRepository;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
@@ -20,7 +20,6 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Service
@@ -28,14 +27,14 @@ import java.util.stream.Collectors;
 public class ReactionServiceImpl implements ReactionService {
 
     private final CheckinReactionRepository reactionRepository;
-    private final CheckinCommentRepository commentRepository; // Inject thêm repository này
+    private final CheckinCommentRepository commentRepository;
     private final CheckinRepository checkinRepository;
     private final UserRepository userRepository;
     private final ReactionMapper reactionMapper;
 
     @Override
     @Transactional
-    public void toggleReaction(UUID checkinId, Long userId, String emoji, String mediaUrl) {
+    public void toggleReaction(Long checkinId, Long userId, String emoji, String mediaUrl) {
         Checkin checkin = checkinRepository.findById(checkinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
 
@@ -66,36 +65,30 @@ public class ReactionServiceImpl implements ReactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CheckinReactionDetailResponse> getReactions(UUID checkinId) {
-        // 1. Lấy Reactions (Max 50)
+    public List<CheckinReactionDetailResponse> getReactions(Long checkinId) {
         List<CheckinReactionDetailResponse> reactions = reactionRepository.findLatestByCheckinId(checkinId, PageRequest.of(0, 50))
                 .stream()
                 .map(reactionMapper::toDetailResponse)
                 .collect(Collectors.toList());
 
-        // 2. Lấy Comments (Max 50)
         List<CheckinReactionDetailResponse> comments = commentRepository.findAllByCheckinId(checkinId, PageRequest.of(0, 50))
                 .stream()
                 .map(reactionMapper::toDetailResponseFromComment)
                 .collect(Collectors.toList());
 
-        // 3. Gộp và Sắp xếp (Mới nhất lên đầu)
         List<CheckinReactionDetailResponse> allActivities = new ArrayList<>();
         allActivities.addAll(reactions);
         allActivities.addAll(comments);
 
         return allActivities.stream()
                 .sorted(Comparator.comparing(CheckinReactionDetailResponse::getCreatedAt).reversed())
-                .limit(50) // Giới hạn tổng 50 item
+                .limit(50)
                 .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<CheckinReactionDetailResponse> getPreviewReactions(UUID checkinId) {
-        // Lấy cả Reaction và Comment mới nhất, giới hạn 3
-        // Copy logic gộp từ getReactions nhưng limit(3)
-        
+    public List<CheckinReactionDetailResponse> getPreviewReactions(Long checkinId) {
         List<CheckinReactionDetailResponse> reactions = reactionRepository.findLatestByCheckinId(checkinId, PageRequest.of(0, 3))
                 .stream()
                 .map(reactionMapper::toDetailResponse)
@@ -112,7 +105,7 @@ public class ReactionServiceImpl implements ReactionService {
         
         return all.stream()
                 .sorted(Comparator.comparing(CheckinReactionDetailResponse::getCreatedAt).reversed())
-                .limit(3) // Chỉ lấy 3 người mới nhất bất kể là thả tim hay comment
+                .limit(3)
                 .collect(Collectors.toList());
     }
 }
