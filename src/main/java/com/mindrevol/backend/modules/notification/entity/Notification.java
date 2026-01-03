@@ -4,6 +4,7 @@ import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "notifications")
@@ -11,15 +12,15 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class Notification extends BaseEntity {
 
-    // Người nhận thông báo
+    // [UUID] ID chính kế thừa từ BaseEntity (String)
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recipient_id", nullable = false)
     private User recipient;
 
-    // Người tạo ra thông báo (có thể null nếu là System)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sender_id")
     private User sender;
@@ -34,13 +35,12 @@ public class Notification extends BaseEntity {
     @Column(nullable = false)
     private String message;
 
-    // ID tham chiếu đến đối tượng liên quan (VD: ID của Journey, ID của Checkin)
-    // Giúp App khi bấm vào noti thì navigate đến đúng màn hình
+    // [UUID] Luôn lưu ID tham chiếu dưới dạng String
     private String referenceId;
 
-    // Đường dẫn ảnh (avatar người gửi hoặc thumbnail checkin)
     private String imageUrl;
 
     @Column(nullable = false)
-    private boolean isRead; // Đã xem chưa
+    @Builder.Default
+    private boolean isRead = false;
 }

@@ -1,93 +1,162 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
     <changeSet id="006-create-chat-entities" author="mindrevol">
         <createTable tableName="conversations">
-            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
-            <column name="user1_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_conv_u1" referencedTableName="users" referencedColumnNames="id"/></column>
-            <column name="user2_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_conv_u2" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            
+            <column name="user1_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_conv_u1" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            <column name="user2_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_conv_u2" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            
             <column name="last_message_content" type="VARCHAR(255)"/>
             <column name="last_message_at" type="TIMESTAMP WITHOUT TIME ZONE"/>
-            <column name="last_sender_id" type="BIGINT"/>
-            <column name="user1_last_read_msg_id" type="BIGINT"/>
-            <column name="user2_last_read_msg_id" type="BIGINT"/>
-            <column name="status" type="VARCHAR(20)" defaultValue="ACTIVE"><constraints nullable="false"/></column>
+            <column name="last_sender_id" type="VARCHAR(36)"/> <column name="user1_last_read_msg_id" type="VARCHAR(36)"/>
+            <column name="user2_last_read_msg_id" type="VARCHAR(36)"/>
+            
+            <column name="status" type="VARCHAR(20)" defaultValue="ACTIVE">
+                <constraints nullable="false"/>
+            </column>
+            
             <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
             <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
-            <column name="created_by" type="BIGINT"/><column name="last_modified_by" type="BIGINT"/>
+            <column name="created_by" type="VARCHAR(36)"/>
+            <column name="last_modified_by" type="VARCHAR(36)"/>
             <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
         </createTable>
         <createIndex indexName="idx_user1_user2" tableName="conversations"><column name="user1_id"/><column name="user2_id"/></createIndex>
         <createIndex indexName="idx_last_message_at" tableName="conversations"><column name="last_message_at"/></createIndex>
+
         <createTable tableName="messages">
-            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            
             <column name="client_side_id" type="VARCHAR(255)"/>
-            <column name="conversation_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_msg_conv" referencedTableName="conversations" referencedColumnNames="id"/></column>
-            <column name="sender_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_msg_sender" referencedTableName="users" referencedColumnNames="id"/></column>
-            <column name="receiver_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_msg_receiver" referencedTableName="users" referencedColumnNames="id"/></column>
+            
+            <column name="conversation_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_msg_conv" referencedTableName="conversations" referencedColumnNames="id"/>
+            </column>
+            
+            <column name="sender_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_msg_sender" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            <column name="receiver_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_msg_receiver" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            
             <column name="content" type="TEXT"/>
             <column name="type" type="VARCHAR(20)"/>
             <column name="metadata" type="JSONB"/>
             <column name="delivery_status" type="VARCHAR(20)" defaultValue="SENT"><constraints nullable="false"/></column>
-            <column name="is_deleted" type="BOOLEAN" defaultValue="false"><constraints nullable="false"/></column>
-            <column name="reply_to_msg_id" type="BIGINT"/>
+            <column name="is_deleted" type="BOOLEAN" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            
+            <column name="reply_to_msg_id" type="VARCHAR(36)"/>
+            
             <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
             <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
-            <column name="created_by" type="BIGINT"/><column name="last_modified_by" type="BIGINT"/>
+            <column name="created_by" type="VARCHAR(36)"/>
+            <column name="last_modified_by" type="VARCHAR(36)"/>
             <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
         </createTable>
         <createIndex indexName="idx_msg_conv_created" tableName="messages"><column name="conversation_id"/><column name="created_at"/></createIndex>
     </changeSet>
+
     <changeSet id="006-create-notifications" author="mindrevol">
         <createTable tableName="notifications">
-            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
-            <column name="recipient_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_noti_rec" referencedTableName="users" referencedColumnNames="id"/></column>
-            <column name="sender_id" type="BIGINT"><constraints foreignKeyName="fk_noti_sen" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            
+            <column name="recipient_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_noti_rec" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            <column name="sender_id" type="VARCHAR(36)">
+                <constraints foreignKeyName="fk_noti_sen" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            
             <column name="type" type="VARCHAR(50)"><constraints nullable="false"/></column>
             <column name="title" type="VARCHAR(255)"><constraints nullable="false"/></column>
             <column name="message" type="VARCHAR(500)"><constraints nullable="false"/></column>
-            <column name="reference_id" type="VARCHAR(255)"/>
+            
+            <column name="reference_id" type="VARCHAR(36)"/>
+            
             <column name="image_url" type="VARCHAR(255)"/>
-            <column name="is_read" type="BOOLEAN" defaultValue="false"><constraints nullable="false"/></column>
+            <column name="is_read" type="BOOLEAN" defaultValueBoolean="false"><constraints nullable="false"/></column>
+            
             <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
             <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
-            <column name="created_by" type="BIGINT"/>
-            <column name="last_modified_by" type="BIGINT"/>
+            <column name="created_by" type="VARCHAR(36)"/>
+            <column name="last_modified_by" type="VARCHAR(36)"/>
             <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
         </createTable>
     </changeSet>
+
     <changeSet id="006-create-payments" author="mindrevol">
         <createTable tableName="payment_transactions">
-            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
-            <column name="user_id" type="BIGINT"><constraints foreignKeyName="fk_pay_u" referencedTableName="users" referencedColumnNames="id"/></column>
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints foreignKeyName="fk_pay_u" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            
             <column name="amount" type="BIGINT"><constraints nullable="false"/></column>
             <column name="gateway" type="VARCHAR(50)"/>
             <column name="gateway_ref_id" type="VARCHAR(255)"><constraints nullable="false" unique="true"/></column>
             <column name="content" type="VARCHAR(255)"/>
             <column name="status" type="VARCHAR(20)"/>
+            
             <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
             <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
-            <column name="created_by" type="BIGINT"/>
-            <column name="last_modified_by" type="BIGINT"/>
+            <column name="created_by" type="VARCHAR(36)"/>
+            <column name="last_modified_by" type="VARCHAR(36)"/>
             <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
         </createTable>
         <createIndex indexName="idx_payment_gateway_ref" tableName="payment_transactions" unique="true"><column name="gateway_ref_id"/></createIndex>
     </changeSet>
+
     <changeSet id="006-create-reports" author="mindrevol">
         <createTable tableName="reports">
-            <column name="id" type="BIGINT" autoIncrement="true"><constraints primaryKey="true"/></column>
-            <column name="reporter_id" type="BIGINT"><constraints nullable="false" foreignKeyName="fk_rep_reporter" referencedTableName="users" referencedColumnNames="id"/></column>
-            <column name="target_id" type="VARCHAR(255)"><constraints nullable="false"/></column>
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            
+            <column name="reporter_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_rep_reporter" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            
+            <column name="target_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            
             <column name="target_type" type="VARCHAR(50)"><constraints nullable="false"/></column>
             <column name="reason" type="VARCHAR(50)"><constraints nullable="false"/></column>
             <column name="description" type="VARCHAR(500)"/>
             <column name="status" type="VARCHAR(20)" defaultValue="PENDING"><constraints nullable="false"/></column>
-            <column name="handler_id" type="BIGINT"><constraints foreignKeyName="fk_rep_handler" referencedTableName="users" referencedColumnNames="id"/></column>
+            
+            <column name="handler_id" type="VARCHAR(36)">
+                <constraints foreignKeyName="fk_rep_handler" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            
             <column name="admin_note" type="VARCHAR(255)"/>
+            
             <column name="created_at" type="TIMESTAMP WITH TIME ZONE" defaultValueComputed="CURRENT_TIMESTAMP"><constraints nullable="false"/></column>
             <column name="updated_at" type="TIMESTAMP WITH TIME ZONE"/>
-            <column name="created_by" type="BIGINT"/>
-            <column name="last_modified_by" type="BIGINT"/>
+            <column name="created_by" type="VARCHAR(36)"/>
+            <column name="last_modified_by" type="VARCHAR(36)"/>
             <column name="deleted_at" type="TIMESTAMP WITH TIME ZONE"/>
         </createTable>
     </changeSet>
+
 </databaseChangeLog>

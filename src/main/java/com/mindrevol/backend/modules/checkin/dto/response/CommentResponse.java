@@ -7,11 +7,11 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class CommentResponse {
-    private Long id; // [FIX] UUID -> Long
+    private String id; // [FIX] Long -> String (UUID)
     private String content;
     private LocalDateTime createdAt;
     
-    private Long userId;
+    private String userId; // [FIX] Long -> String (UUID)
     private String userFullName;
     private String userAvatar;
 }

@@ -4,14 +4,15 @@ import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
-@Table(name = "point_histories")
+@Table(name = "point_history")
 @Getter
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class PointHistory extends BaseEntity {
 
     @ManyToOne(fetch = FetchType.LAZY)
@@ -19,14 +20,16 @@ public class PointHistory extends BaseEntity {
     private User user;
 
     @Column(nullable = false)
-    private Long amount; // Số điểm thay đổi (Ví dụ: +10 hoặc -50)
+    private int amount; // Có thể âm hoặc dương
 
-    @Column(nullable = false)
-    private Long balanceAfter; // Số dư sau khi thay đổi (Snapshot)
-
-    @Column(nullable = false)
-    private String reason; // Lý do (Vd: "Check-in hàng ngày", "Mua vé đóng băng")
-    
     @Enumerated(EnumType.STRING)
-    private PointSource source;
+    @Column(nullable = false)
+    private PointSource source; // CHECKIN, JOIN_JOURNEY...
+
+    @Column(columnDefinition = "TEXT")
+    private String description;
+    
+    // ID của đối tượng nguồn (ví dụ ID bài checkin), lưu String UUID
+    @Column(name = "reference_id") 
+    private String referenceId; 
 }

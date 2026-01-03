@@ -8,7 +8,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 public class SecurityUtils {
 
     // Hàm này sẽ trả về ID của người đang đăng nhập
-    public static Long getCurrentUserId() {
+    public static String getCurrentUserId() {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
         if (authentication == null || !authentication.isAuthenticated() || authentication.getPrincipal().equals("anonymousUser")) {

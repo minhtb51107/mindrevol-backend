@@ -9,5 +9,10 @@
     <include file="modules/004-checkin.xml" relativeToChangelogFile="true"/>
     <include file="modules/005-habit-gamification.xml" relativeToChangelogFile="true"/>
     <include file="modules/006-social-ops.xml" relativeToChangelogFile="true"/>
+    
+    <include file="patches/007-fix-invitation-constraint.xml" relativeToChangelogFile="true"/>
+    <include file="patches/008-add-journey-active-days.xml" relativeToChangelogFile="true"/>
+    
+    <include file="patches/010-add-checkin-context.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

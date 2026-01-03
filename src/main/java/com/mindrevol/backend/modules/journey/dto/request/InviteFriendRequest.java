@@ -6,8 +6,8 @@ import lombok.Data;
 @Data
 public class InviteFriendRequest {
     @NotNull(message = "Journey ID is required")
-    private Long journeyId; // [FIX] UUID -> Long
+    private String journeyId; // [UUID] String
 
     @NotNull(message = "Friend ID is required")
-    private Long friendId;
+    private String friendId; // [UUID] String
 }

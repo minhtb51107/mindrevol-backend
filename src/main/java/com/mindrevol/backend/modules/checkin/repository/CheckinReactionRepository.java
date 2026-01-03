@@ -11,13 +11,12 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface CheckinReactionRepository extends JpaRepository<CheckinReaction, Long> { // [FIX] Long
+public interface CheckinReactionRepository extends JpaRepository<CheckinReaction, String> { // [UUID]
 
-    // [FIX] UUID -> Long
-    Optional<CheckinReaction> findByCheckinIdAndUserId(Long checkinId, Long userId);
+    Optional<CheckinReaction> findByCheckinIdAndUserId(String checkinId, String userId);
 
     @Query("SELECT r FROM CheckinReaction r JOIN FETCH r.user WHERE r.checkin.id = :checkinId ORDER BY r.createdAt DESC")
-    List<CheckinReaction> findLatestByCheckinId(@Param("checkinId") Long checkinId, Pageable pageable);
+    List<CheckinReaction> findLatestByCheckinId(@Param("checkinId") String checkinId, Pageable pageable);
 
-    long countByCheckinId(Long checkinId);
+    long countByCheckinId(String checkinId);
 }

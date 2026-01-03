@@ -11,20 +11,20 @@ import org.springframework.stereotype.Repository;
 import java.util.Collection;
 import java.util.List;
 
-// [FIX] Extends Long
+// [UUID] Extends String
 @Repository
-public interface CheckinCommentRepository extends JpaRepository<CheckinComment, Long> {
+public interface CheckinCommentRepository extends JpaRepository<CheckinComment, String> {
     
-    // [FIX] UUID checkinId -> Long checkinId
+    // [UUID] checkinId, excludedUserIds là String
     @Query("SELECT c FROM CheckinComment c " +
            "JOIN FETCH c.user u " +
            "WHERE c.checkin.id = :checkinId " +
            "AND u.id NOT IN :excludedUserIds " +
            "ORDER BY c.createdAt ASC")
-    Page<CheckinComment> findByCheckinId(@Param("checkinId") Long checkinId, 
-                                         @Param("excludedUserIds") Collection<Long> excludedUserIds, 
+    Page<CheckinComment> findByCheckinId(@Param("checkinId") String checkinId, 
+                                         @Param("excludedUserIds") Collection<String> excludedUserIds, 
                                          Pageable pageable);
 
     @Query("SELECT c FROM CheckinComment c JOIN FETCH c.user WHERE c.checkin.id = :checkinId ORDER BY c.createdAt DESC")
-    List<CheckinComment> findAllByCheckinId(@Param("checkinId") Long checkinId, Pageable pageable);
+    List<CheckinComment> findAllByCheckinId(@Param("checkinId") String checkinId, Pageable pageable);
 }

@@ -4,13 +4,16 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.InputStream;
 
 public interface FileStorageService {
-    // Upload ảnh gốc
+    // 1. Upload ảnh gốc (Giữ nguyên cho CheckinService dùng - mặc định folder chung)
     String uploadFile(MultipartFile file);
     
-    // Upload ảnh từ luồng dữ liệu (Dùng cho Worker sau khi nén xong)
+    // 2. [MỚI] Upload ảnh có chỉ định folder (Dùng cho User Profile: "avatars/...")
+    String uploadFile(MultipartFile file, String folder);
+    
+    // Upload ảnh từ luồng dữ liệu (Dùng cho Worker)
     String uploadStream(InputStream inputStream, String fileName, String contentType, long size);
     
-    // Tải ảnh về (để Worker xử lý)
+    // Tải ảnh về
     InputStream downloadFile(String fileUrl);
     
     void deleteFile(String fileUrl);

@@ -13,16 +13,17 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface JourneyInvitationRepository extends JpaRepository<JourneyInvitation, Long> {
+public interface JourneyInvitationRepository extends JpaRepository<JourneyInvitation, String> { // [UUID]
 
-    // [FIX] Đổi UUID -> Long cho journeyId
-    boolean existsByJourneyIdAndInviteeIdAndStatus(Long journeyId, Long inviteeId, JourneyInvitationStatus status);
+    // [UUID] String journeyId, String inviteeId
+    boolean existsByJourneyIdAndInviteeIdAndStatus(String journeyId, String inviteeId, JourneyInvitationStatus status);
 
-    // Lấy danh sách lời mời ĐẾN tôi
+    // [UUID] userId là String
     @Query("SELECT ji FROM JourneyInvitation ji WHERE ji.invitee.id = :userId AND ji.status = 'PENDING' ORDER BY ji.createdAt DESC")
     @EntityGraph(attributePaths = {"journey", "inviter"})
-    Page<JourneyInvitation> findPendingInvitationsForUser(@Param("userId") Long userId, Pageable pageable);
+    Page<JourneyInvitation> findPendingInvitationsForUser(@Param("userId") String userId, Pageable pageable);
     
-    // Tìm lời mời cụ thể
-    Optional<JourneyInvitation> findByIdAndInviteeId(Long id, Long inviteeId);
+    Optional<JourneyInvitation> findByIdAndInviteeId(String id, String inviteeId);
+
+	long countByInviteeIdAndStatus(String userId, JourneyInvitationStatus pending);
 }

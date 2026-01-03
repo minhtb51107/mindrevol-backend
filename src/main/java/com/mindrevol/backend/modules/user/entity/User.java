@@ -31,6 +31,8 @@ import java.util.stream.Collectors;
 @Where(clause = "deleted_at IS NULL") 
 public class User extends BaseEntity implements UserDetails {
 
+    // [UUID] ID kế thừa từ BaseEntity (String)
+
     @Column(nullable = false, unique = true, length = 100)
     private String email;
 
@@ -85,12 +87,9 @@ public class User extends BaseEntity implements UserDetails {
     @Builder.Default
     private Set<Role> roles = new HashSet<>();
     
-    // Vẫn giữ point để xếp hạng/đua top cho vui, nhưng không dùng để mua đồ nữa
     @Column(columnDefinition = "bigint default 0")
     @Builder.Default
     private Long points = 0L;
-
-    // [ĐÃ XÓA] freezeStreakCount
 
     @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default

@@ -8,8 +8,8 @@ import lombok.NoArgsConstructor;
 @AllArgsConstructor
 @NoArgsConstructor
 public class TypingEvent {
-    private Long conversationId;
-    private Long senderId;
-    private Long receiverId; // Gửi cho ai
-    private boolean isTyping; // true = đang gõ, false = đã dừng
+    private String conversationId; // [SỬA] Long -> String
+    private String senderId;       // [SỬA] Long -> String
+    private String receiverId;     // [SỬA] Long -> String
+    private boolean isTyping; 
 }

@@ -10,15 +10,20 @@ import org.springframework.data.domain.Pageable;
 import java.util.List;
 
 public interface ChatService {
-    MessageResponse sendMessage(Long senderId, SendMessageRequest request);
+    // [SỬA] String userId
+    MessageResponse sendMessage(String userId, SendMessageRequest request);
     
-    // [UPDATE] Trả về ConversationResponse
-    List<ConversationResponse> getUserConversations(Long userId);
+    List<ConversationResponse> getUserConversations(String userId);
     
-    Page<MessageResponse> getConversationMessages(Long conversationId, Pageable pageable);
-    Page<MessageResponse> getMessagesWithUser(Long currentUserId, Long partnerId, Pageable pageable);
-    void markConversationAsRead(Long conversationId, Long userId);
-    Conversation getConversationById(Long id);
+    // [SỬA] String conversationId
+    Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable);
+    
+    // [SỬA] String userId, partnerId
+    Page<MessageResponse> getMessagesWithUser(String userId, String partnerId, Pageable pageable);
+    
+    void markConversationAsRead(String conversationId, String userId);
+    
+    Conversation getConversationById(String id);
 
-	ConversationResponse getOrCreateConversation(Long senderId, Long receiverId);
+    ConversationResponse getOrCreateConversation(String senderId, String receiverId);
 }

@@ -8,10 +8,8 @@ import org.mapstruct.Mapping;
 @Mapper(componentModel = "spring")
 public interface HabitMapper {
 
-    @Mapping(target = "userId", source = "user.id")
-    @Mapping(target = "journeyId", source = "journeyId")
-    
+    @Mapping(target = "userId", source = "user.id") // User ID là String -> OK
+    @Mapping(target = "journeyId", source = "journeyId") // String -> OK
     @Mapping(target = "isCompletedToday", ignore = true)
-    
     HabitResponse toResponse(Habit habit);
 }

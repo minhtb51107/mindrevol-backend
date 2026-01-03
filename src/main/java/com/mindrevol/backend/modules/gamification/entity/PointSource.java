@@ -6,4 +6,5 @@ public enum PointSource {
     ADMIN_ADJUST,   // Admin tặng/trừ
     BONUS,          // Thưởng thêm
     TOPUP           // [MỚI] Nạp tiền
+, REVOKED, STREAK
 }

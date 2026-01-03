@@ -2,7 +2,6 @@ package com.mindrevol.backend.modules.user.entity;
 
 import jakarta.persistence.*;
 import lombok.*;
-import java.util.Set;
 
 @Getter
 @Setter

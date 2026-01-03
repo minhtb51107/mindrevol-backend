@@ -21,11 +21,12 @@ public class UserBlockController {
 
     private final UserBlockService userBlockService;
 
+    // [UUID] @PathVariable String
     @PostMapping("/blocks/{targetId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Chặn người dùng")
-    public ResponseEntity<ApiResponse<Void>> blockUser(@PathVariable Long targetId) {
-        Long currentUserId = SecurityUtils.getCurrentUserId();
+    public ResponseEntity<ApiResponse<Void>> blockUser(@PathVariable String targetId) {
+        String currentUserId = SecurityUtils.getCurrentUserId();
         userBlockService.blockUser(currentUserId, targetId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -33,8 +34,8 @@ public class UserBlockController {
     @DeleteMapping("/blocks/{targetId}")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Bỏ chặn người dùng")
-    public ResponseEntity<ApiResponse<Void>> unblockUser(@PathVariable Long targetId) {
-        Long currentUserId = SecurityUtils.getCurrentUserId();
+    public ResponseEntity<ApiResponse<Void>> unblockUser(@PathVariable String targetId) {
+        String currentUserId = SecurityUtils.getCurrentUserId();
         userBlockService.unblockUser(currentUserId, targetId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
@@ -43,7 +44,7 @@ public class UserBlockController {
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Lấy danh sách chặn")
     public ResponseEntity<ApiResponse<List<UserSummaryResponse>>> getBlockList() {
-        Long userId = SecurityUtils.getCurrentUserId();
+        String userId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(userBlockService.getBlockList(userId)));
     }
 }

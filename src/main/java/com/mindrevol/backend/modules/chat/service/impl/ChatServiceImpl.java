@@ -41,11 +41,10 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @Transactional
-    public MessageResponse sendMessage(Long senderId, SendMessageRequest request) {
-        // Giả sử request có receiverId. Nếu request có conversationId thì cần logic khác.
-        Long receiverId = request.getReceiverId(); 
+    public MessageResponse sendMessage(String senderId, SendMessageRequest request) { 
+        String receiverId = request.getReceiverId(); 
         
-        if (receiverId == null) {
+        if (receiverId == null || receiverId.isEmpty()) {
              throw new BadRequestException("Receiver ID không được để trống");
         }
 
@@ -53,20 +52,22 @@ public class ChatServiceImpl implements ChatService {
             throw new BadRequestException("Bạn không thể gửi tin nhắn cho người này.");
         }
 
-        // 1. Lấy User Object (Proxy) để gán vào Message Entity
         User sender = userRepository.getReferenceById(senderId);
         User receiver = userRepository.getReferenceById(receiverId);
 
-        // 2. Tìm hoặc tạo Conversation
-        // Lưu ý: findByUsers trả về Conversation Entity
-        Conversation conversation = conversationRepository.findByUsers(senderId, receiverId)
-                .orElseGet(() -> createNewConversation(sender, receiver)); // [FIX] Truyền User object vào
+        // [FIX] Xử lý list conversation (nếu có duplicate thì lấy cái đầu tiên)
+        List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
+        Conversation conversation;
+        if (existingConvs.isEmpty()) {
+            conversation = createNewConversation(sender, receiver);
+        } else {
+            conversation = existingConvs.get(0);
+        }
 
-        // 3. Tạo Message
         Message message = Message.builder()
                 .conversation(conversation)
-                .sender(sender)      // [FIX] .senderId(Long) -> .sender(User)
-                .receiver(receiver)  // [FIX] .receiverId(Long) -> .receiver(User)
+                .sender(sender)
+                .receiver(receiver)
                 .content(request.getContent())
                 .type(request.getType() != null ? request.getType() : MessageType.TEXT)
                 .metadata(request.getMetadata())
@@ -76,7 +77,6 @@ public class ChatServiceImpl implements ChatService {
 
         message = messageRepository.save(message);
 
-        // 4. Update Conversation Metadata
         String previewContent = message.getType() == MessageType.IMAGE ? "[Hình ảnh]" : message.getContent();
         conversation.setLastMessageContent(previewContent);
         conversation.setLastMessageAt(LocalDateTime.now());
@@ -84,11 +84,10 @@ public class ChatServiceImpl implements ChatService {
         
         conversationRepository.save(conversation);
 
-        // 5. Response & Socket
         MessageResponse response = chatMapper.toResponse(message);
 
         messagingTemplate.convertAndSendToUser(
-                String.valueOf(receiverId),
+                receiverId, 
                 "/queue/messages",
                 response
         );
@@ -96,13 +95,12 @@ public class ChatServiceImpl implements ChatService {
         return response;
     }
 
-    // [FIX] Nhận User object thay vì Long để tránh query lại DB
     private Conversation createNewConversation(User sender, User receiver) {
         Conversation conv = Conversation.builder()
                 .user1(sender)
                 .user2(receiver)
                 .lastMessageAt(LocalDateTime.now())
-                .status(ConversationStatus.ACTIVE) // Đảm bảo có status
+                .status(ConversationStatus.ACTIVE)
                 .build();
         
         return conversationRepository.save(conv);
@@ -110,11 +108,10 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<ConversationResponse> getUserConversations(Long userId) {
+    public List<ConversationResponse> getUserConversations(String userId) { 
         List<Conversation> conversations = conversationRepository.findValidConversationsByUserId(userId);
 
         return conversations.stream().map(conv -> {
-            // Xác định partner
             User partnerEntity = conv.getUser1().getId().equals(userId) ? conv.getUser2() : conv.getUser1();
             
             boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
@@ -143,15 +140,19 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<MessageResponse> getConversationMessages(Long conversationId, Pageable pageable) {
+    public Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable) { 
         return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 .map(chatMapper::toResponse);
     }
 
     @Override
     @Transactional(readOnly = true)
-    public Page<MessageResponse> getMessagesWithUser(Long currentUserId, Long partnerId, Pageable pageable) {
-        Conversation conversation = conversationRepository.findByUsers(currentUserId, partnerId)
+    public Page<MessageResponse> getMessagesWithUser(String currentUserId, String partnerId, Pageable pageable) { 
+        // [FIX] Lấy list và findFirst để tránh lỗi NonUniqueResultException
+        List<Conversation> conversations = conversationRepository.findByUsers(currentUserId, partnerId);
+        
+        Conversation conversation = conversations.stream()
+                .findFirst()
                 .orElseThrow(() -> new ResourceNotFoundException("Chưa có cuộc trò chuyện nào."));
         
         return getConversationMessages(conversation.getId(), pageable);
@@ -159,11 +160,10 @@ public class ChatServiceImpl implements ChatService {
 
     @Override
     @Transactional
-    public void markConversationAsRead(Long conversationId, Long userId) {
+    public void markConversationAsRead(String conversationId, String userId) { 
         Conversation conversation = conversationRepository.findById(conversationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Conversation not found"));
 
-        // 1. Cập nhật Status các tin nhắn chưa đọc
         List<Message> unreadMessages = messageRepository.findUnreadMessagesInConversation(
                 conversationId, 
                 userId, 
@@ -177,19 +177,21 @@ public class ChatServiceImpl implements ChatService {
             messageRepository.saveAll(unreadMessages);
         }
 
-        // 2. Cập nhật LastReadMessageId
         Message lastMessage = messageRepository.findTopByConversationIdOrderByCreatedAtDesc(conversationId)
                 .orElse(null);
 
         if (lastMessage != null) {
             boolean updated = false;
+            
             if (conversation.getUser1().getId().equals(userId)) {
-                if (conversation.getUser1LastReadMessageId() == null || conversation.getUser1LastReadMessageId() < lastMessage.getId()) {
+                if (conversation.getUser1LastReadMessageId() == null || 
+                    conversation.getUser1LastReadMessageId().compareTo(lastMessage.getId()) < 0) {
                     conversation.setUser1LastReadMessageId(lastMessage.getId());
                     updated = true;
                 }
             } else if (conversation.getUser2().getId().equals(userId)) {
-                if (conversation.getUser2LastReadMessageId() == null || conversation.getUser2LastReadMessageId() < lastMessage.getId()) {
+                if (conversation.getUser2LastReadMessageId() == null || 
+                    conversation.getUser2LastReadMessageId().compareTo(lastMessage.getId()) < 0) {
                     conversation.setUser2LastReadMessageId(lastMessage.getId());
                     updated = true;
                 }
@@ -198,12 +200,12 @@ public class ChatServiceImpl implements ChatService {
             if (updated) {
                 conversationRepository.save(conversation);
                 
-                Long partnerId = conversation.getUser1().getId().equals(userId) 
+                String partnerId = conversation.getUser1().getId().equals(userId) 
                         ? conversation.getUser2().getId() 
                         : conversation.getUser1().getId();
                 
                 messagingTemplate.convertAndSendToUser(
-                    String.valueOf(partnerId),
+                    partnerId, 
                     "/queue/read-receipt",
                     new MessageReadEvent(conversationId, lastMessage.getId(), userId)
                 );
@@ -212,28 +214,35 @@ public class ChatServiceImpl implements ChatService {
     }
 
     @Override
-    public Conversation getConversationById(Long id) {
+    public Conversation getConversationById(String id) { 
         return conversationRepository.findById(id).orElseThrow();
     }
     
     @Override
     @Transactional
-    public ConversationResponse getOrCreateConversation(Long senderId, Long receiverId) {
+    public ConversationResponse getOrCreateConversation(String senderId, String receiverId) { 
         if (userBlockService.isBlocked(receiverId, senderId) || userBlockService.isBlocked(senderId, receiverId)) {
             throw new BadRequestException("Không thể bắt đầu cuộc trò chuyện do chặn người dùng.");
         }
         
-        // Dùng getReferenceById để tối ưu nếu cần tạo mới
         User sender = userRepository.getReferenceById(senderId);
         User receiver = userRepository.getReferenceById(receiverId);
 
-        Conversation conversation = conversationRepository.findByUsers(senderId, receiverId)
-                .orElseGet(() -> createNewConversation(sender, receiver));
+        // [FIX] Handle duplicate conversations gracefully
+        List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
+        Conversation conversation;
+        
+        if (existingConvs.isEmpty()) {
+             conversation = createNewConversation(sender, receiver);
+        } else {
+             // Lấy cái đầu tiên (mới nhất do đã order by DESC trong repository)
+             conversation = existingConvs.get(0);
+        }
 
         return mapToConversationResponse(conversation, senderId);
     }
 
-    private ConversationResponse mapToConversationResponse(Conversation conv, Long currentUserId) {
+    private ConversationResponse mapToConversationResponse(Conversation conv, String currentUserId) {
         User partnerEntity = conv.getUser1().getId().equals(currentUserId) ? conv.getUser2() : conv.getUser1();
         
         boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());

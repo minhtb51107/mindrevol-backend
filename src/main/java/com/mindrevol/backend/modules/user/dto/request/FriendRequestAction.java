@@ -6,5 +6,5 @@ import lombok.Data;
 @Data
 public class FriendRequestAction {
     @NotNull(message = "Target User ID is required")
-    private Long targetUserId;
+    private String targetUserId; // [UUID] String
 }

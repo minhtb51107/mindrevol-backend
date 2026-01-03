@@ -13,9 +13,6 @@ public class UserDataExport {
     private UserProfileResponse profile;
     private List<HabitResponse> habits;
     private List<CheckinResponse> checkins;
-    
-    // [SỬA TẠI ĐÂY] Đổi từ UserSummaryResponse thành FriendshipResponse
     private List<FriendshipResponse> friends; 
-    
     private List<String> badges;
 }

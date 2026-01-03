@@ -1,12 +1,12 @@
 package com.mindrevol.backend.modules.auth.entity;
 
+import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import org.hibernate.annotations.UuidGenerator;
 
 import java.time.OffsetDateTime;
 import java.util.UUID;
-
-import com.mindrevol.backend.modules.user.entity.User;
 
 @Getter
 @Setter
@@ -16,9 +16,11 @@ import com.mindrevol.backend.modules.user.entity.User;
 @Entity
 @Table(name = "magic_link_tokens")
 public class MagicLinkToken {
+    
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @UuidGenerator
+    @Column(length = 36)
+    private String id; // [UUID] Long -> String
 
     @Column(nullable = false, unique = true)
     private String token;

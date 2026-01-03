@@ -11,12 +11,12 @@ import java.util.Map;
 @Data
 @Builder
 public class MessageResponse {
-    private Long id;
+    private String id;              // [SỬA] Long -> String
     private String clientSideId;
-    private Long conversationId;
+    private String conversationId;  // [SỬA] Long -> String
     
-    private Long senderId;
-    private String senderAvatar; // [FIX] Thêm trường này để Mapper không báo lỗi
+    private String senderId;        // [SỬA] Long -> String
+    private String senderAvatar;
     
     private String content;
     private MessageType type;
@@ -24,7 +24,7 @@ public class MessageResponse {
     
     private MessageDeliveryStatus deliveryStatus;
     private boolean isDeleted;
-    private Long replyToMsgId;
+    private String replyToMsgId;    // [SỬA] Long -> String
     
     private LocalDateTime createdAt;
 }

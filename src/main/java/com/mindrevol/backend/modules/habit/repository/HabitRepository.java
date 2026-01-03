@@ -1,18 +1,21 @@
 package com.mindrevol.backend.modules.habit.repository;
 
+import com.mindrevol.backend.modules.habit.entity.Habit;
+import com.mindrevol.backend.modules.habit.entity.HabitLog;
+
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import com.mindrevol.backend.modules.habit.entity.Habit;
-
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
+// [UUID] String
 @Repository
-public interface HabitRepository extends JpaRepository<Habit, Long> {
+public interface HabitRepository extends JpaRepository<Habit, String> {
     
-    List<Habit> findByUserIdAndArchivedFalse(Long userId);
+    // [UUID] userId là String
+    List<Habit> findByUserIdAndArchivedFalse(String userId);
 
-    Optional<Habit> findByUserIdAndJourneyId(Long userId, Long journeyId);
+    // [UUID] userId, journeyId là String
+    Optional<Habit> findByUserIdAndJourneyId(String userId, String journeyId);
 }

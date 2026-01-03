@@ -4,10 +4,8 @@ import com.mindrevol.backend.modules.payment.entity.PaymentTransaction;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import java.util.Optional;
-
+// [UUID] JpaRepository<PaymentTransaction, String>
 @Repository
-public interface PaymentTransactionRepository extends JpaRepository<PaymentTransaction, Long> {
-    // Tìm xem mã giao dịch này đã tồn tại chưa
+public interface PaymentTransactionRepository extends JpaRepository<PaymentTransaction, String> {
     boolean existsByGatewayRefId(String gatewayRefId);
 }

@@ -19,13 +19,12 @@ public class VerificationController {
     private final VerificationService verificationService;
     private final UserService userService;
 
-    // [FIX] UUID -> Long
     @PostMapping("/{checkinId}/vote")
     public ResponseEntity<ApiResponse<Void>> castVote(
-            @PathVariable Long checkinId,
+            @PathVariable String checkinId,
             @Valid @RequestBody VoteRequest request) {
         
-        Long currentUserId = SecurityUtils.getCurrentUserId();
+        String currentUserId = SecurityUtils.getCurrentUserId();
         User currentUser = userService.getUserById(currentUserId);
         
         verificationService.castVote(checkinId, currentUser, request.getIsApproved());

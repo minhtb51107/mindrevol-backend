@@ -1,6 +1,6 @@
 package com.mindrevol.backend.modules.user.entity;
 
-import com.fasterxml.jackson.annotation.JsonIgnore; // <--- THÊM IMPORT
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.mindrevol.backend.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
@@ -16,10 +16,9 @@ public class UserSettings extends BaseEntity {
 
     @OneToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
-    @JsonIgnore // <--- THÊM DÒNG NÀY (Quan trọng: Ngắt vòng lặp JSON)
+    @JsonIgnore
     private User user;
 
-    // ... (Giữ nguyên các trường còn lại: emailDailyReminder, pushFriendRequest...)
     @Column(name = "email_daily_reminder")
     @Builder.Default
     private boolean emailDailyReminder = true;

@@ -29,41 +29,43 @@ public class FeedEventListener {
     private final FriendshipRepository friendshipRepository;
     private final FeedService feedService;
 
-    @Async("taskExecutor") // Chạy bất đồng bộ để không làm chậm API trả về
+    @Async("taskExecutor")
     @EventListener
     @Transactional(readOnly = true)
     public void handleFanOut(CheckinSuccessEvent event) {
         log.info("Starting Feed Fan-out for Checkin: {}", event.getCheckinId());
 
+        // event.getCheckinId() là String -> OK
         Checkin checkin = checkinRepository.findById(event.getCheckinId()).orElse(null);
         if (checkin == null) return;
 
-        Long authorId = checkin.getUser().getId();
+        String authorId = checkin.getUser().getId();
         CheckinVisibility visibility = checkin.getVisibility();
 
         // 1. Luôn push vào feed của chính tác giả
         feedService.pushToFeed(authorId, checkin.getId());
 
         if (visibility == CheckinVisibility.PRIVATE) {
-            return; // Không push cho ai khác
+            return; 
         }
 
-        // 2. Lấy danh sách tất cả thành viên trong Journey
+        // 2. Lấy danh sách thành viên (Check lại JourneyParticipantRepository xem đã đổi UUID chưa)
+        // checkin.getJourney().getId() trả về String -> OK
         List<JourneyParticipant> participants = participantRepository.findAllByJourneyId(checkin.getJourney().getId());
 
-        // 3. Lấy danh sách bạn bè của tác giả (nếu cần filter FRIENDS_ONLY)
-        Set<Long> friendIds = null;
+        // 3. Lấy danh sách bạn bè
+        Set<String> friendIds = null;
         if (visibility == CheckinVisibility.FRIENDS_ONLY) {
+            // friendshipRepository cần nhận String authorId
             friendIds = friendshipRepository.findAllAcceptedFriendsList(authorId).stream()
-                    .map(f -> f.getFriend(authorId).getId()) // Helper method trong Entity Friendship
+                    .map(f -> f.getFriend(authorId).getId()) 
                     .collect(Collectors.toSet());
         }
 
         // 4. Duyệt và Push
         for (JourneyParticipant p : participants) {
-            Long memberId = p.getUser().getId();
+            String memberId = p.getUser().getId();
             
-            // Bỏ qua tác giả (đã push rồi)
             if (memberId.equals(authorId)) continue;
 
             boolean shouldPush = false;
@@ -77,6 +79,7 @@ public class FeedEventListener {
             }
 
             if (shouldPush) {
+                // feedService cần nhận (String userId, String checkinId)
                 feedService.pushToFeed(memberId, checkin.getId());
             }
         }

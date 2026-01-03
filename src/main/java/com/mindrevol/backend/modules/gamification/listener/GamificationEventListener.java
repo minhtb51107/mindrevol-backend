@@ -23,11 +23,11 @@ public class GamificationEventListener {
     @EventListener
     @Transactional
     public void handleCheckinSuccess(CheckinSuccessEvent event) {
-        // [FIX] event.getCheckinId() bây giờ là Long
+        // [UUID] event.getCheckinId() là String
         Checkin checkin = checkinRepository.findById(event.getCheckinId()).orElse(null);
-        
-        if (checkin != null) {
-            gamificationService.awardPointsForCheckin(checkin);
-        }
+        if (checkin == null) return;
+
+        log.info("Processing gamification for Checkin: {}", checkin.getId());
+        gamificationService.processCheckinGamification(checkin);
     }
 }

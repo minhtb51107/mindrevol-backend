@@ -25,10 +25,8 @@ import java.util.List;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@SuperBuilder // [QUAN TRỌNG] Dùng SuperBuilder để kế thừa ID Long từ BaseEntity
+@SuperBuilder
 public class Checkin extends BaseEntity {
-
-    // [ĐÃ XÓA] @Id UUID id (BaseEntity đã lo ID Long)
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
@@ -37,8 +35,6 @@ public class Checkin extends BaseEntity {
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "journey_id", nullable = false)
     private Journey journey;
-
-    // [ĐÃ XÓA] private JourneyTask task; (Vì đã bỏ tính năng Task)
 
     @Column(columnDefinition = "TEXT")
     private String caption;
@@ -49,8 +45,32 @@ public class Checkin extends BaseEntity {
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
 
+    // --- CÁC TRƯỜNG CONTEXT/PLATFORM MỚI ---
+
     @Column(length = 50) 
-    private String emotion; 
+    private String emotion; // Ví dụ: "🔥", "🌿", "CHILL"
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "activity_type")
+    @Builder.Default
+    private ActivityType activityType = ActivityType.DEFAULT;
+
+    // Tên hiển thị của ngữ cảnh (VD: "Đang học", "Cà phê sáng")
+    @Column(name = "activity_name")
+    private String activityName; 
+
+    // Địa điểm
+    @Column(name = "location_name")
+    private String locationName;
+
+    // Tags phụ (Lưu user IDs hoặc string tags)
+    @ElementCollection
+    @CollectionTable(name = "checkin_tags", joinColumns = @JoinColumn(name = "checkin_id"))
+    @Column(name = "tag")
+    @Builder.Default
+    private List<String> tags = new ArrayList<>();
+
+    // ----------------------------------------
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
@@ -62,7 +82,6 @@ public class Checkin extends BaseEntity {
     @Builder.Default
     private CheckinVisibility visibility = CheckinVisibility.PUBLIC;
 
-    // BaseEntity đã có createdAt, nhưng ta cần checkinDate riêng cho logic business
     @Column(name = "checkin_date", nullable = false)
     private LocalDate checkinDate;
 
@@ -76,7 +95,7 @@ public class Checkin extends BaseEntity {
 
     @PrePersist
     public void prePersist() {
-        // BaseEntity sẽ tự set createdAt
         if (this.checkinDate == null) this.checkinDate = LocalDate.now();
+        if (this.tags == null) this.tags = new ArrayList<>();
     }
 }

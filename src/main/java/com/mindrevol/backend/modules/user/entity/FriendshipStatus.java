@@ -5,4 +5,5 @@ public enum FriendshipStatus {
     ACCEPTED,   // Đã là bạn bè
     DECLINED,   // Đã từ chối
     BLOCKED     // Đã chặn
+, NONE
 }

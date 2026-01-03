@@ -18,12 +18,12 @@ import lombok.*;
 @Builder
 public class Friendship extends BaseEntity {
 
-    // Người gửi lời mời kết bạn
+    // [UUID] String ID từ BaseEntity
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "requester_id", nullable = false)
     private User requester;
 
-    // Người nhận lời mời
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "addressee_id", nullable = false)
     private User addressee;
@@ -32,18 +32,12 @@ public class Friendship extends BaseEntity {
     @Column(nullable = false)
     private FriendshipStatus status;
 
-    /**
-     * Helper method để kiểm tra user có tham gia vào friendship này không
-     */
-    public boolean involvesUser(Long userId) {
+    public boolean involvesUser(String userId) { // [UUID] String
         return this.requester.getId().equals(userId) || this.addressee.getId().equals(userId);
     }
     
-    /**
-     * Helper method để lấy ra User đối phương (người kia)
-     */
-    public User getFriend(Long myUserId) {
-        if (requester.getId().equals(myUserId)) {
+    public User getFriend(String authorId) { // [UUID] String
+        if (requester.getId().equals(authorId)) {
             return addressee;
         }
         return requester;

@@ -1,19 +1,12 @@
 package com.mindrevol.backend.modules.auth.repository;
 
+import com.mindrevol.backend.modules.auth.entity.UserActivationToken;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
-
-import com.mindrevol.backend.modules.auth.entity.UserActivationToken;
-
 import java.util.Optional;
 
+// [UUID] JpaRepository<UserActivationToken, String>
 @Repository
-public interface UserActivationTokenRepository extends JpaRepository<UserActivationToken, Long> {
-
-    /**
-     * Tìm token bằng chuỗi token.
-     * @param token Chuỗi token duy nhất.
-     * @return Optional chứa UserActivationToken nếu tìm thấy.
-     */
+public interface UserActivationTokenRepository extends JpaRepository<UserActivationToken, String> {
     Optional<UserActivationToken> findByToken(String token);
 }

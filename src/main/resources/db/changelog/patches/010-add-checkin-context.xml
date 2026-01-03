@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+                   xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.3.xsd">
+
+    <changeSet id="010-add-checkin-context" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <not>
+                <columnExists tableName="checkins" columnName="activity_type"/>
+            </not>
+        </preConditions>
+
+        <addColumn tableName="checkins">
+            <column name="activity_type" type="VARCHAR(50)" defaultValue="DEFAULT">
+                <constraints nullable="false"/>
+            </column>
+            <column name="activity_name" type="VARCHAR(255)"/>
+            <column name="location_name" type="VARCHAR(255)"/>
+        </addColumn>
+
+        <createTable tableName="checkin_tags">
+            <column name="checkin_id" type="VARCHAR(36)">
+                <constraints nullable="false" 
+                             foreignKeyName="fk_tags_checkin" 
+                             referencedTableName="checkins" 
+                             referencedColumnNames="id"
+                             deleteCascade="true"/>
+            </column>
+            <column name="tag" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        
+        <createIndex indexName="idx_checkin_tags" tableName="checkin_tags">
+            <column name="checkin_id"/>
+        </createIndex>
+    </changeSet>
+
+</databaseChangeLog>

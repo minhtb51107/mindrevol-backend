@@ -24,7 +24,7 @@ public class JourneyCleanupJob {
      * Chạy mỗi ngày vào lúc 00:01 sáng.
      * Nhiệm vụ: Đóng các hành trình đã hết hạn (endDate < hôm nay).
      */
-    @Scheduled(cron = "0 1 0 * * ?")
+    @Scheduled(cron = "0 * * * * ?") // Chạy mỗi phút
     @Transactional
     public void closeExpiredJourneys() {
         // Dùng Redisson Lock để tránh chạy trùng nếu deploy nhiều server (như DailyStreakResetJob)

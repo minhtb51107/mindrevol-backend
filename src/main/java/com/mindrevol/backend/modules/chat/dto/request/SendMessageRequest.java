@@ -10,16 +10,14 @@ import java.util.Map;
 public class SendMessageRequest {
     
     @NotNull(message = "Người nhận không được để trống")
-    private Long receiverId;
+    private String receiverId; // [SỬA] Long -> String
 
     @NotBlank(message = "Nội dung tin nhắn không được để trống")
     private String content;
 
     private MessageType type;
 
-    // [THÊM MỚI]
     private Map<String, Object> metadata;
     
-    // [THÊM MỚI] ID tạm từ client để xử lý Optimistic UI
     private String clientSideId;
 }

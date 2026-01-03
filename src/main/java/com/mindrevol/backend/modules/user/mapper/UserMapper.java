@@ -16,7 +16,6 @@ import java.util.stream.Collectors;
 @Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
 public interface UserMapper {
 
-    // Map từ createdAt (Local) -> joinedAt (Offset)
     @Mapping(source = "createdAt", target = "joinedAt")
     @Mapping(target = "roles", source = "roles", qualifiedByName = "mapRoles")
     @Mapping(target = "followerCount", ignore = true) 
@@ -24,7 +23,7 @@ public interface UserMapper {
     @Mapping(target = "isFollowedByCurrentUser", ignore = true)
     UserProfileResponse toProfileResponse(User user);
 
-    UserSummaryResponse toSummaryResponse(User user);
+    UserSummaryResponse toSummaryResponse(User user); // ID user là String nên MapStruct tự map được
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     void updateUserFromRequest(UpdateProfileRequest request, @MappingTarget User user);
@@ -37,7 +36,6 @@ public interface UserMapper {
                 .collect(Collectors.toSet());
     }
 
-    // [FIX] Thêm hàm này để MapStruct tự dùng khi thấy LocalDateTime -> OffsetDateTime
     default OffsetDateTime map(LocalDateTime value) {
         return value != null ? value.atOffset(ZoneOffset.UTC) : null;
     }

@@ -7,10 +7,10 @@ import java.time.LocalTime;
 @Data
 @Builder
 public class HabitResponse {
-    // [FIX] Đổi tất cả UUID thành Long
-    private Long id;          
-    private Long userId;      
-    private Long journeyId;   
+    // [UUID] Đổi tất cả sang String
+    private String id;          
+    private String userId;      
+    private String journeyId;   
 
     private String title;
     private String description;

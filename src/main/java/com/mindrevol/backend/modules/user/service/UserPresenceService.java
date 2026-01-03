@@ -16,31 +16,26 @@ public class UserPresenceService {
     private final RedisTemplate<String, Object> redisTemplate;
 
     private static final String ONLINE_USERS_KEY = "users:online:";
-    private static final long ONLINE_TIMEOUT_MINUTES = 5; // Tự động offline nếu mất kết nối socket quá 5p
+    private static final long ONLINE_TIMEOUT_MINUTES = 5; 
 
-    // Đánh dấu User lên mạng
-    public void connect(Long userId) {
+    public void connect(String userId) { // [UUID]
         String key = ONLINE_USERS_KEY + userId;
         redisTemplate.opsForValue().set(key, LocalDateTime.now().toString());
         redisTemplate.expire(key, ONLINE_TIMEOUT_MINUTES, TimeUnit.MINUTES);
         log.debug("User {} is ONLINE", userId);
     }
 
-    // Đánh dấu User thoát
-    public void disconnect(Long userId) {
+    public void disconnect(String userId) { // [UUID]
         String key = ONLINE_USERS_KEY + userId;
         redisTemplate.delete(key);
-        // Ở đây có thể cập nhật lastActiveAt vào Database nếu muốn lưu lịch sử
         log.debug("User {} is OFFLINE", userId);
     }
 
-    // Kiểm tra User có đang online không
-    public boolean isUserOnline(Long userId) {
+    public boolean isUserOnline(String userId) { // [UUID]
         return Boolean.TRUE.equals(redisTemplate.hasKey(ONLINE_USERS_KEY + userId));
     }
     
-    // Gia hạn thời gian online (Heartbeat)
-    public void heartbeat(Long userId) {
+    public void heartbeat(String userId) { // [UUID]
         String key = ONLINE_USERS_KEY + userId;
         redisTemplate.expire(key, ONLINE_TIMEOUT_MINUTES, TimeUnit.MINUTES);
     }

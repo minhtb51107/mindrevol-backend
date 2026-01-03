@@ -31,18 +31,16 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     @Override
     @Transactional
-    public FriendshipResponse sendFriendRequest(Long requesterId, Long targetUserId) {
+    public FriendshipResponse sendFriendRequest(String requesterId, String targetUserId) { 
         if (requesterId.equals(targetUserId)) {
             throw new BadRequestException("Không thể tự kết bạn với chính mình");
         }
 
-        // Check tồn tại User
         User requester = userRepository.findById(requesterId)
                 .orElseThrow(() -> new ResourceNotFoundException("Người gửi không tồn tại"));
         User addressee = userRepository.findById(targetUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Người nhận không tồn tại"));
 
-        // Check tồn tại quan hệ
         if (friendshipRepository.existsByUsers(requesterId, targetUserId)) {
             throw new BadRequestException("Đã tồn tại mối quan hệ hoặc lời mời giữa hai người");
         }
@@ -55,14 +53,13 @@ public class FriendshipServiceImpl implements FriendshipService {
 
         Friendship saved = friendshipRepository.save(friendship);
 
-        // Gửi thông báo
         notificationService.sendAndSaveNotification(
                 addressee.getId(),
                 requester.getId(),
                 NotificationType.FRIEND_REQUEST,
                 "Lời mời kết bạn mới 👋",
                 requester.getFullname() + " muốn kết bạn với bạn.",
-                saved.getId().toString(),
+                saved.getId(), 
                 requester.getAvatarUrl()
         );
 
@@ -71,7 +68,7 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     @Override
     @Transactional
-    public FriendshipResponse acceptFriendRequest(Long userId, Long friendshipId) {
+    public FriendshipResponse acceptFriendRequest(String userId, String friendshipId) { 
         Friendship friendship = friendshipRepository.findById(friendshipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lời mời không tồn tại"));
 
@@ -86,7 +83,6 @@ public class FriendshipServiceImpl implements FriendshipService {
         friendship.setStatus(FriendshipStatus.ACCEPTED);
         Friendship saved = friendshipRepository.save(friendship);
 
-        // Thông báo ngược lại cho người gửi
         User accepter = friendship.getAddressee();
         User requester = friendship.getRequester();
 
@@ -96,7 +92,7 @@ public class FriendshipServiceImpl implements FriendshipService {
                 NotificationType.FRIEND_ACCEPTED,
                 "Đã trở thành bạn bè 🤝",
                 accepter.getFullname() + " đã chấp nhận lời mời kết bạn.",
-                accepter.getId().toString(),
+                accepter.getId(),
                 accepter.getAvatarUrl()
         );
 
@@ -105,7 +101,7 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     @Override
     @Transactional
-    public void declineFriendRequest(Long userId, Long friendshipId) {
+    public void declineFriendRequest(String userId, String friendshipId) { 
         Friendship friendship = friendshipRepository.findById(friendshipId)
                 .orElseThrow(() -> new ResourceNotFoundException("Lời mời không tồn tại"));
 
@@ -117,31 +113,39 @@ public class FriendshipServiceImpl implements FriendshipService {
 
     @Override
     @Transactional
-    public void removeFriendship(Long userId, Long targetUserId) {
+    public void removeFriendship(String userId, String targetUserId) { 
         Friendship friendship = friendshipRepository.findByUsers(userId, targetUserId)
                 .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy mối quan hệ bạn bè"));
         friendshipRepository.delete(friendship);
     }
 
     @Override
-    public Page<FriendshipResponse> getMyFriends(Long userId, Pageable pageable) {
-        // Sử dụng hàm findAllAcceptedFriends từ Repository
+    public Page<FriendshipResponse> getMyFriends(String userId, Pageable pageable) { 
         return friendshipRepository.findAllAcceptedFriends(userId, pageable)
                 .map(friendship -> friendshipMapper.toResponse(friendship, userId));
     }
 
-    // --- ĐÃ SỬA LỖI ---
+    // [MỚI] Hàm lấy bạn bè của một user bất kỳ (Public)
     @Override
     @Transactional(readOnly = true)
-    public Page<FriendshipResponse> getIncomingRequests(Long userId, Pageable pageable) {
-        // Gọi hàm findIncomingRequests trả về Page<Friendship>
-        return friendshipRepository.findIncomingRequests(userId, FriendshipStatus.PENDING, pageable)
-                // Map từng Friendship sang FriendshipResponse
+    public Page<FriendshipResponse> getUserFriends(String userId, Pageable pageable) {
+        if (!userRepository.existsById(userId)) {
+            throw new ResourceNotFoundException("User not found");
+        }
+        // Dùng lại hàm query tìm bạn đã accepted
+        return friendshipRepository.findAllAcceptedFriends(userId, pageable)
                 .map(friendship -> friendshipMapper.toResponse(friendship, userId));
     }
 
     @Override
-    public Page<FriendshipResponse> getOutgoingRequests(Long userId, Pageable pageable) {
+    @Transactional(readOnly = true)
+    public Page<FriendshipResponse> getIncomingRequests(String userId, Pageable pageable) { 
+        return friendshipRepository.findIncomingRequests(userId, FriendshipStatus.PENDING, pageable)
+                .map(friendship -> friendshipMapper.toResponse(friendship, userId));
+    }
+
+    @Override
+    public Page<FriendshipResponse> getOutgoingRequests(String userId, Pageable pageable) { 
         return friendshipRepository.findOutgoingRequests(userId, pageable)
                 .map(friendship -> friendshipMapper.toResponse(friendship, userId));
     }

@@ -14,19 +14,18 @@ public interface CheckinService {
 
     CheckinResponse createCheckin(CheckinRequest request, User currentUser);
 
-    // [FIX] UUID -> Long
-    Page<CheckinResponse> getJourneyFeed(Long journeyId, Pageable pageable, User currentUser);
+    // [UUID] Long -> String
+    Page<CheckinResponse> getJourneyFeed(String journeyId, Pageable pageable, User currentUser);
 
-    CommentResponse postComment(Long checkinId, String content, User currentUser);
+    CommentResponse postComment(String checkinId, String content, User currentUser);
     
-    Page<CommentResponse> getComments(Long checkinId, Pageable pageable);
+    Page<CommentResponse> getComments(String checkinId, Pageable pageable);
 
     List<CheckinResponse> getUnifiedFeed(User currentUser, LocalDateTime cursor, int limit);
 
-    // [FIX] UUID -> Long
-    List<CheckinResponse> getJourneyFeedByCursor(Long journeyId, User currentUser, LocalDateTime cursor, int limit);
+    List<CheckinResponse> getJourneyFeedByCursor(String journeyId, User currentUser, LocalDateTime cursor, int limit);
     
-    CheckinResponse updateCheckin(Long checkinId, String caption, User currentUser);
+    CheckinResponse updateCheckin(String checkinId, String caption, User currentUser);
 
-    void deleteCheckin(Long checkinId, User currentUser);
+    void deleteCheckin(String checkinId, User currentUser);
 }

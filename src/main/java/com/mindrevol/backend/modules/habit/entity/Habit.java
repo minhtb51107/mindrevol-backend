@@ -1,9 +1,10 @@
 package com.mindrevol.backend.modules.habit.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
+import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
-import com.mindrevol.backend.common.entity.BaseEntity; // Kiểm tra lại package BaseEntity của bạn
-import com.mindrevol.backend.modules.user.entity.User;
+import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -14,12 +15,11 @@ import java.time.LocalTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-// Không cần @EntityListeners(AuditingEntityListener.class) nữa vì BaseEntity đã có
+@SuperBuilder
 public class Habit extends BaseEntity {
 
-    // Đã xóa id UUID
-    
+    // [UUID] ID String từ BaseEntity
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
@@ -30,19 +30,18 @@ public class Habit extends BaseEntity {
     private String description;
 
     @Column(length = 20)
-    private String frequency; // DAILY, WEEKLY
+    private String frequency; 
 
     private LocalTime reminderTime;
 
     private LocalDate startDate;
     private LocalDate endDate;
 
+    // [UUID] String (ID của Journey)
     @Column(name = "journey_id")
-    private Long journeyId; // [FIX] Đổi từ UUID sang Long để khớp với bảng Journeys mới
+    private String journeyId; 
 
     @Column(name = "is_archived")
     @Builder.Default
     private boolean archived = false;
-
-    // Đã xóa createdAt, updatedAt vì BaseEntity tự lo
 }

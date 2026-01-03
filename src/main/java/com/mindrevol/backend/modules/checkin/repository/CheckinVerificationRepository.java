@@ -8,7 +8,7 @@ import org.springframework.stereotype.Repository;
 
 // [FIX] Extends Long
 @Repository
-public interface CheckinVerificationRepository extends JpaRepository<CheckinVerification, Long> {
+public interface CheckinVerificationRepository extends JpaRepository<CheckinVerification, String> {
     
     // [FIX] checkinId UUID -> Long
     @Query("SELECT COUNT(v) FROM CheckinVerification v WHERE v.checkin.id = :checkinId AND v.isApproved = true")
@@ -16,8 +16,8 @@ public interface CheckinVerificationRepository extends JpaRepository<CheckinVeri
 
     // [FIX] checkinId UUID -> Long
     @Query("SELECT COUNT(v) FROM CheckinVerification v WHERE v.checkin.id = :checkinId AND v.isApproved = false")
-    long countRejections(@Param("checkinId") Long checkinId);
+    long countRejections(@Param("checkinId") String string);
 
     // [FIX] checkinId UUID -> Long
-    boolean existsByCheckinIdAndVoterId(Long checkinId, Long voterId);
+    boolean existsByCheckinIdAndVoterId(String checkinId, String string);
 }

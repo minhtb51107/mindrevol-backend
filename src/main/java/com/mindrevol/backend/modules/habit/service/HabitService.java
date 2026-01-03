@@ -10,15 +10,15 @@ public interface HabitService {
     HabitResponse createHabit(CreateHabitRequest request, User user);
     List<HabitResponse> getMyHabits(User user);
     
-    // [FIX] Đổi UUID thành Long
-    void markHabitCompleted(Long habitId, Long checkinId, User user);
+    // [UUID] Đổi Long -> String
+    void markHabitCompleted(String habitId, String checkinId, User user);
     
-    // [FIX] Đổi UUID thành Long
-    void markHabitFailed(Long habitId, User user);
+    // [UUID] Đổi Long -> String
+    void markHabitFailed(String habitId, User user);
 
-    // [FIX] Đổi UUID thành Long (vì Journey và Checkin giờ cũng là Long)
-    void markHabitCompletedByJourney(Long journeyId, Long checkinId, User user);
+    // [UUID] Đổi Long -> String
+    void markHabitCompletedByJourney(String journeyId, String checkinId, User user);
     
-    // [FIX] Đổi UUID thành Long
-    void createHabitFromJourney(Long journeyId, String journeyName, User user);
+    // [UUID] Đổi Long -> String
+    void createHabitFromJourney(String journeyId, String journeyName, User user);
 }

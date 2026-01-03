@@ -6,7 +6,8 @@ import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
 
+// [UUID]
 @Repository
-public interface UserSettingsRepository extends JpaRepository<UserSettings, Long> {
-    Optional<UserSettings> findByUserId(Long userId);
+public interface UserSettingsRepository extends JpaRepository<UserSettings, String> {
+    Optional<UserSettings> findByUserId(String userId);
 }

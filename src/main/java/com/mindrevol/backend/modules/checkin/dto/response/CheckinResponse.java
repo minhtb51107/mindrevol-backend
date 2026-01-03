@@ -1,5 +1,6 @@
 package com.mindrevol.backend.modules.checkin.dto.response;
 
+import com.mindrevol.backend.modules.checkin.entity.ActivityType;
 import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
 import com.mindrevol.backend.modules.checkin.entity.CheckinVisibility;
 import lombok.Builder;
@@ -12,18 +13,27 @@ import java.util.List;
 @Data
 @Builder
 public class CheckinResponse {
-    private Long id;          // [FIX] UUID -> Long
-    private Long journeyId;   // [FIX] UUID -> Long
+    private String id;
+    private String journeyId;
     
     // User info
-    private Long userId;
+    private String userId;
     private String userFullName;
     private String userAvatar;
 
     // Content
     private String imageUrl;
+    private String thumbnailUrl;
     private String caption;
+    
+    // Context Info
     private String emotion;
+    private ActivityType activityType;
+    private String activityName;
+    private String locationName;
+    private List<String> tags;
+
+    // Meta
     private CheckinStatus status;
     private CheckinVisibility visibility;
     private LocalDate checkinDate;
@@ -33,6 +43,4 @@ public class CheckinResponse {
     private Long commentCount;
     private Long reactionCount;
     private List<CheckinReactionDetailResponse> latestReactions;
-    
-    // [ĐÃ XÓA] taskId, taskTitle, taskDayNo
 }

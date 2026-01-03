@@ -14,17 +14,21 @@ import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.mapper.JourneyMapper;
 import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
+import com.mindrevol.backend.modules.storage.service.FileStorageService; // Import Service Upload
 import com.mindrevol.backend.modules.user.dto.request.UpdateNotificationSettingsRequest;
 import com.mindrevol.backend.modules.user.dto.request.UpdateProfileRequest;
 import com.mindrevol.backend.modules.user.dto.response.LinkedAccountResponse;
 import com.mindrevol.backend.modules.user.dto.response.UserDataExport;
 import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
 import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
+import com.mindrevol.backend.modules.user.entity.Friendship;
+import com.mindrevol.backend.modules.user.entity.FriendshipStatus;
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.entity.UserSettings;
 import com.mindrevol.backend.modules.user.mapper.FriendshipMapper;
 import com.mindrevol.backend.modules.user.mapper.UserMapper;
 import com.mindrevol.backend.modules.user.repository.FriendshipRepository;
+import com.mindrevol.backend.modules.user.repository.UserBlockRepository;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
 import com.mindrevol.backend.modules.user.repository.UserSettingsRepository;
 import com.mindrevol.backend.modules.user.service.UserService;
@@ -32,8 +36,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile; // Import này
 
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Service
@@ -54,6 +60,8 @@ public class UserServiceImpl implements UserService {
     private final UserBadgeRepository userBadgeRepository;
     private final JourneyRepository journeyRepository;
     private final JourneyMapper journeyMapper;
+    private final UserBlockRepository userBlockRepository;
+    private final FileStorageService fileStorageService; // Inject Service Upload
     
     private final UserSettingsRepository userSettingsRepository;
     private final SocialAccountRepository socialAccountRepository;
@@ -68,6 +76,17 @@ public class UserServiceImpl implements UserService {
     public UserProfileResponse getPublicProfile(String handle, String currentUserEmail) {
         User targetUser = userRepository.findByHandle(handle)
                 .orElseThrow(() -> new ResourceNotFoundException("Người dùng @" + handle + " không tồn tại."));
+        return getPublicProfileCommon(targetUser, currentUserEmail);
+    }
+
+    @Override
+    public UserProfileResponse getPublicProfileById(String userId, String currentUserEmail) {
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Người dùng không tồn tại."));
+        return getPublicProfileCommon(targetUser, currentUserEmail);
+    }
+
+    private UserProfileResponse getPublicProfileCommon(User targetUser, String currentUserEmail) {
         User currentUser = null;
         if (currentUserEmail != null && !currentUserEmail.equals("anonymousUser")) {
             currentUser = userRepository.findByEmail(currentUserEmail).orElse(null);
@@ -75,11 +94,25 @@ public class UserServiceImpl implements UserService {
         return buildUserProfile(targetUser, currentUser);
     }
 
+    // [CẬP NHẬT LOGIC UPLOAD ẢNH]
     @Override
     @Transactional
-    public UserProfileResponse updateProfile(String currentEmail, UpdateProfileRequest request) {
+    public UserProfileResponse updateProfile(String currentEmail, UpdateProfileRequest request, MultipartFile file) {
         User user = getUserByEmail(currentEmail);
         
+        // 1. Nếu có file ảnh gửi lên thì upload
+        if (file != null && !file.isEmpty()) {
+            try {
+                // Upload vào folder avatars/{userId}
+                String avatarUrl = fileStorageService.uploadFile(file, "avatars/" + user.getId());
+                user.setAvatarUrl(avatarUrl);
+            } catch (Exception e) {
+                log.error("Failed to upload avatar", e);
+                throw new BadRequestException("Lỗi khi tải lên ảnh đại diện: " + e.getMessage());
+            }
+        }
+
+        // 2. Xử lý các trường text
         if (request.getFullname() != null) request.setFullname(sanitizationService.sanitizeStrict(request.getFullname()));
         if (request.getBio() != null) request.setBio(sanitizationService.sanitizeRichText(request.getBio()));
         
@@ -105,20 +138,20 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void updateFcmToken(Long userId, String token) {
+    public void updateFcmToken(String userId, String token) { 
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         user.setFcmToken(token);
         userRepository.save(user);
     }
 
     @Override
-    public User getUserById(Long id) {
+    public User getUserById(String id) { 
         return userRepository.findById(id).orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
     @Override
     @Transactional
-    public void deleteMyAccount(Long userId) {
+    public void deleteMyAccount(String userId) { 
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         long timestamp = System.currentTimeMillis();
         user.setEmail(user.getEmail() + "_deleted_" + timestamp);
@@ -132,7 +165,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserDataExport exportMyData(Long userId) {
+    public UserDataExport exportMyData(String userId) { 
         User user = getUserById(userId);
 
         var habits = habitRepository.findByUserIdAndArchivedFalse(userId).stream()
@@ -145,7 +178,6 @@ public class UserServiceImpl implements UserService {
                 .map(f -> friendshipMapper.toResponse(f, userId)) 
                 .collect(Collectors.toList());
 
-        // [FIX] Sửa EarnedAt -> CreatedAt
         var badges = userBadgeRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(ub -> ub.getBadge().getName()).collect(Collectors.toList());
 
@@ -159,7 +191,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public List<UserSummaryResponse> searchUsers(String query, Long currentUserId) {
+    public List<UserSummaryResponse> searchUsers(String query, String currentUserId) {
         String cleanedQuery = query.startsWith("@") ? query.substring(1) : query;
         List<User> users = userRepository.searchUsers(cleanedQuery);
         return users.stream()
@@ -169,14 +201,14 @@ public class UserServiceImpl implements UserService {
                         .fullname(u.getFullname())
                         .handle(u.getHandle())
                         .avatarUrl(u.getAvatarUrl())
-                        .friendshipStatus("NONE")
+                        .friendshipStatus("NONE") 
                         .build())
                 .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<JourneyResponse> getUserRecaps(Long userId) {
+    public List<JourneyResponse> getUserRecaps(String userId) { 
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("User not found");
         }
@@ -188,7 +220,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserSettings getNotificationSettings(Long userId) {
+    public UserSettings getNotificationSettings(String userId) {
         return userSettingsRepository.findByUserId(userId)
                 .orElseGet(() -> {
                     User user = getUserById(userId);
@@ -199,7 +231,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public UserSettings updateNotificationSettings(Long userId, UpdateNotificationSettingsRequest request) {
+    public UserSettings updateNotificationSettings(String userId, UpdateNotificationSettingsRequest request) {
         UserSettings settings = getNotificationSettings(userId);
 
         if (request.getEmailDailyReminder() != null) settings.setEmailDailyReminder(request.getEmailDailyReminder());
@@ -221,7 +253,7 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public List<LinkedAccountResponse> getLinkedAccounts(Long userId) {
+    public List<LinkedAccountResponse> getLinkedAccounts(String userId) {
         List<SocialAccount> accounts = socialAccountRepository.findAllByUserId(userId);
         return accounts.stream()
                 .map(acc -> LinkedAccountResponse.builder()
@@ -235,7 +267,7 @@ public class UserServiceImpl implements UserService {
 
     @Override
     @Transactional
-    public void unlinkSocialAccount(Long userId, String provider) {
+    public void unlinkSocialAccount(String userId, String provider) {
         User user = getUserById(userId);
         
         boolean hasPassword = "LOCAL".equals(user.getAuthProvider());
@@ -261,7 +293,27 @@ public class UserServiceImpl implements UserService {
         long friendCount = friendshipRepository.countByUserIdAndStatusAccepted(targetUser.getId());
         response.setFriendCount(friendCount); 
 
-        response.setFollowerCount(0);
+        if (viewer != null && viewer.getId().equals(targetUser.getId())) {
+            response.setMe(true);
+            response.setFriendshipStatus(FriendshipStatus.NONE); 
+            response.setBlockedByMe(false);
+            response.setBlockedByThem(false);
+        } else if (viewer != null) {
+            response.setMe(false);
+            boolean isBlockedByMe = userBlockRepository.existsByBlockerIdAndBlockedId(viewer.getId(), targetUser.getId());
+            boolean isBlockedByThem = userBlockRepository.existsByBlockerIdAndBlockedId(targetUser.getId(), viewer.getId());
+            response.setBlockedByMe(isBlockedByMe);
+            response.setBlockedByThem(isBlockedByThem);
+            Optional<Friendship> friendship = friendshipRepository.findByUsers(viewer.getId(), targetUser.getId());
+            response.setFriendshipStatus(friendship.map(Friendship::getStatus).orElse(FriendshipStatus.NONE));
+        } else {
+            response.setMe(false);
+            response.setFriendshipStatus(FriendshipStatus.NONE);
+            response.setBlockedByMe(false);
+            response.setBlockedByThem(false);
+        }
+
+        response.setFollowerCount(0); 
         response.setFollowingCount(0);
         response.setFollowedByCurrentUser(false);
         

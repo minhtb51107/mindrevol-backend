@@ -12,11 +12,8 @@ import lombok.experimental.SuperBuilder;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@SuperBuilder // Dùng SuperBuilder để kế thừa builder từ BaseEntity
+@SuperBuilder
 public class JourneyRequest extends BaseEntity {
-
-    // [QUAN TRỌNG] Đã xóa trường @Id private UUID id; 
-    // Vì nó sẽ dùng ID Long từ BaseEntity
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "journey_id", nullable = false)
@@ -30,6 +27,4 @@ public class JourneyRequest extends BaseEntity {
     @Column(nullable = false)
     @Builder.Default
     private RequestStatus status = RequestStatus.PENDING;
-    
-    // Các trường createdAt, updatedAt đã có sẵn trong BaseEntity nên không cần khai báo lại
 }

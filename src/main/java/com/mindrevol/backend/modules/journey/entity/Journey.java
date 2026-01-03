@@ -41,12 +41,11 @@ public class Journey extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private JourneyStatus status = JourneyStatus.ONGOING; // [FIXED] Dùng ONGOING
+    private JourneyStatus status = JourneyStatus.ONGOING;
 
     @Column(name = "invite_code", unique = true)
     private String inviteCode;
 
-    // Giữ lại setting này để quản lý duyệt thành viên
     @Column(name = "require_approval")
     @Builder.Default
     private boolean requireApproval = false;

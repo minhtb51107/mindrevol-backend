@@ -1,14 +1,5 @@
 package com.mindrevol.backend.modules.habit.service.impl;
 
-import java.time.LocalDate;
-import java.util.List;
-import java.util.Optional;
-import java.util.stream.Collectors;
-
-import org.springframework.context.ApplicationEventPublisher;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.habit.dto.request.CreateHabitRequest;
@@ -21,9 +12,16 @@ import com.mindrevol.backend.modules.habit.repository.HabitLogRepository;
 import com.mindrevol.backend.modules.habit.repository.HabitRepository;
 import com.mindrevol.backend.modules.habit.service.HabitService;
 import com.mindrevol.backend.modules.user.entity.User;
-
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDate;
+import java.util.List;
+import java.util.Optional;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -56,7 +54,7 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     public List<HabitResponse> getMyHabits(User user) {
-        // ID User là Long
+        // [UUID] user.getId() là String
         List<Habit> habits = habitRepository.findByUserIdAndArchivedFalse(user.getId());
         LocalDate today = LocalDate.now();
 
@@ -75,8 +73,8 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     @Transactional
-    // [FIX] UUID -> Long
-    public void markHabitCompleted(Long habitId, Long checkinId, User user) {
+    // [UUID] String habitId, String checkinId
+    public void markHabitCompleted(String habitId, String checkinId, User user) {
         Habit habit = getHabitAndCheckOwner(habitId, user);
         saveHabitLog(habit, checkinId, HabitLogStatus.COMPLETED);
 
@@ -87,18 +85,16 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     @Transactional
-    // [FIX] UUID -> Long
-    public void markHabitFailed(Long habitId, User user) {
+    // [UUID] String habitId
+    public void markHabitFailed(String habitId, User user) {
         Habit habit = getHabitAndCheckOwner(habitId, user);
         saveHabitLog(habit, null, HabitLogStatus.FAILED);
     }
 
-    // --- LOGIC KẾT NỐI JOURNEY ---
-
     @Override
     @Transactional
-    // [FIX] UUID -> Long
-    public void markHabitCompletedByJourney(Long journeyId, Long checkinId, User user) {
+    // [UUID] String journeyId, String checkinId
+    public void markHabitCompletedByJourney(String journeyId, String checkinId, User user) {
         Optional<Habit> habitOpt = habitRepository.findByUserIdAndJourneyId(user.getId(), journeyId);
 
         if (habitOpt.isPresent()) {
@@ -111,8 +107,8 @@ public class HabitServiceImpl implements HabitService {
 
     @Override
     @Transactional
-    // [FIX] UUID -> Long
-    public void createHabitFromJourney(Long journeyId, String journeyName, User user) {
+    // [UUID] String journeyId
+    public void createHabitFromJourney(String journeyId, String journeyName, User user) {
         if (habitRepository.findByUserIdAndJourneyId(user.getId(), journeyId).isPresent()) {
             return; 
         }
@@ -130,19 +126,19 @@ public class HabitServiceImpl implements HabitService {
         log.info("Auto-created Habit from Journey {} for User {}", journeyId, user.getId());
     }
 
-    // [FIX] UUID -> Long
-    private Habit getHabitAndCheckOwner(Long habitId, User user) {
+    // [UUID] String habitId
+    private Habit getHabitAndCheckOwner(String habitId, User user) {
         Habit habit = habitRepository.findById(habitId)
                 .orElseThrow(() -> new ResourceNotFoundException("Habit not found"));
-        // Cả 2 ID đều là Long, so sánh equals OK
+        // [UUID] So sánh 2 chuỗi String
         if (!habit.getUser().getId().equals(user.getId())) {
             throw new BadRequestException("Unauthorized access to habit");
         }
         return habit;
     }
 
-    // [FIX] UUID -> Long
-    private void saveHabitLog(Habit habit, Long checkinId, HabitLogStatus status) {
+    // [UUID] String checkinId
+    private void saveHabitLog(Habit habit, String checkinId, HabitLogStatus status) {
         LocalDate today = LocalDate.now();
         Optional<HabitLog> existingLog = habitLogRepository.findByHabitIdAndLogDate(habit.getId(), today);
 

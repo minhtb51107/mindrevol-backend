@@ -4,8 +4,8 @@ import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailR
 import java.util.List;
 
 public interface ReactionService {
-    // [FIX] UUID -> Long
-    void toggleReaction(Long checkinId, Long userId, String emoji, String mediaUrl);
-    List<CheckinReactionDetailResponse> getReactions(Long checkinId);
-    List<CheckinReactionDetailResponse> getPreviewReactions(Long checkinId);
+    // [UUID] Long -> String
+    void toggleReaction(String checkinId, String userId, String emoji, String mediaUrl);
+    List<CheckinReactionDetailResponse> getReactions(String checkinId);
+    List<CheckinReactionDetailResponse> getPreviewReactions(String checkinId);
 }

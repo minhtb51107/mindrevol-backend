@@ -25,21 +25,21 @@ public class ImageProcessingListener {
     private final CheckinRepository checkinRepository;
     private final FileStorageService fileStorageService;
 
-    // --- THAY ĐỔI TẠI ĐÂY: Dùng Pool riêng cho ảnh ---
     @Async("imageTaskExecutor") 
-    // ------------------------------------------------
     @EventListener
     @Transactional
     public void handleImageProcessing(CheckinSuccessEvent event) {
+        // event.getCheckinId() bây giờ là String -> Hết lỗi findById
         log.info("Bắt đầu xử lý ảnh cho Checkin ID: {}", event.getCheckinId());
 
         try {
-            // [Giữ nguyên logic xử lý ảnh cũ của bạn]
             Checkin checkin = checkinRepository.findById(event.getCheckinId()).orElse(null);
+            
             if (checkin == null || checkin.getImageUrl() == null || checkin.getImageUrl().isEmpty()) {
                 return;
             }
 
+            // Logic xử lý ảnh giữ nguyên
             InputStream originalImageStream = fileStorageService.downloadFile(checkin.getImageUrl());
 
             ByteArrayOutputStream os = new ByteArrayOutputStream();

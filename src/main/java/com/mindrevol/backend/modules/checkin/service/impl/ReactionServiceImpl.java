@@ -34,7 +34,7 @@ public class ReactionServiceImpl implements ReactionService {
 
     @Override
     @Transactional
-    public void toggleReaction(Long checkinId, Long userId, String emoji, String mediaUrl) {
+    public void toggleReaction(String checkinId, String userId, String emoji, String mediaUrl) {
         Checkin checkin = checkinRepository.findById(checkinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
 
@@ -65,7 +65,7 @@ public class ReactionServiceImpl implements ReactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CheckinReactionDetailResponse> getReactions(Long checkinId) {
+    public List<CheckinReactionDetailResponse> getReactions(String checkinId) {
         List<CheckinReactionDetailResponse> reactions = reactionRepository.findLatestByCheckinId(checkinId, PageRequest.of(0, 50))
                 .stream()
                 .map(reactionMapper::toDetailResponse)
@@ -88,7 +88,7 @@ public class ReactionServiceImpl implements ReactionService {
 
     @Override
     @Transactional(readOnly = true)
-    public List<CheckinReactionDetailResponse> getPreviewReactions(Long checkinId) {
+    public List<CheckinReactionDetailResponse> getPreviewReactions(String checkinId) {
         List<CheckinReactionDetailResponse> reactions = reactionRepository.findLatestByCheckinId(checkinId, PageRequest.of(0, 3))
                 .stream()
                 .map(reactionMapper::toDetailResponse)

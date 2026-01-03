@@ -12,25 +12,24 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface JourneyRepository extends JpaRepository<Journey, Long> {
+public interface JourneyRepository extends JpaRepository<Journey, String> {
     
     Optional<Journey> findByInviteCode(String inviteCode);
     
     boolean existsByInviteCode(String inviteCode);
 
-    List<Journey> findByCreatorId(Long creatorId);
+    List<Journey> findByCreatorId(String creatorId);
 
     @Query("SELECT COUNT(j) FROM JourneyParticipant jp JOIN jp.journey j WHERE jp.user.id = :userId AND jp.role = 'OWNER' AND j.status = 'ONGOING'")
-    long countActiveOwnedJourneys(@Param("userId") Long userId);
+    long countActiveOwnedJourneys(@Param("userId") String userId);
 
     @Modifying
     @Query("UPDATE Journey j SET j.status = 'COMPLETED' WHERE j.status = 'ONGOING' AND j.endDate < :today")
     int updateExpiredJourneysStatus(@Param("today") LocalDate today);
 
-    // [FIX] Thêm @Query để tìm Journey đã hoàn thành mà user có tham gia
     @Query("SELECT j FROM Journey j " +
            "JOIN JourneyParticipant jp ON j.id = jp.journey.id " +
            "WHERE jp.user.id = :userId " +
            "AND j.status = 'COMPLETED'")
-    List<Journey> findCompletedJourneysByUserId(@Param("userId") Long userId);
+    List<Journey> findCompletedJourneysByUserId(@Param("userId") String userId);
 }

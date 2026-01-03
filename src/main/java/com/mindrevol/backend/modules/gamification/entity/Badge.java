@@ -1,8 +1,9 @@
 package com.mindrevol.backend.modules.gamification.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import java.time.LocalDateTime;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "badges")
@@ -10,23 +11,24 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-public class Badge {
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+@SuperBuilder
+public class Badge extends BaseEntity {
 
     @Column(nullable = false, unique = true)
-    private String code;
-
     private String name;
+
+    @Column(columnDefinition = "TEXT")
     private String description;
+
+    @Column(name = "icon_url")
     private String iconUrl;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "condition_type", nullable = false)
     private BadgeConditionType conditionType;
 
-    private Integer conditionValue; 
-
-    private LocalDateTime createdAt;
+    @Column(name = "condition_value", nullable = false)
+    private int conditionValue; 
+    
+    // Ví dụ: conditionType = STREAK, conditionValue = 7 (Huy hiệu 7 ngày liên tiếp)
 }

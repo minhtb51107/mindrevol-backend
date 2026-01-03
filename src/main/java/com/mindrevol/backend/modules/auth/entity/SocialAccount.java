@@ -16,17 +16,19 @@ import lombok.*;
 @Builder
 public class SocialAccount extends BaseEntity {
 
+    // [UUID] Kế thừa BaseEntity (String ID)
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
     @Column(nullable = false, length = 50)
-    private String provider; // GOOGLE, FACEBOOK, APPLE
+    private String provider; 
 
     @Column(name = "provider_id", nullable = false)
-    private String providerId; // ID định danh từ phía MXH (VD: sub của Google)
+    private String providerId; 
 
-    private String email; // Email của tài khoản MXH đó (có thể khác email chính)
+    private String email; 
     
     @Column(name = "avatar_url")
     private String avatarUrl;

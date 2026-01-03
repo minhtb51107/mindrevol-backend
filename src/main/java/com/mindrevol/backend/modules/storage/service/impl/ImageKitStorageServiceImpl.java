@@ -22,7 +22,7 @@ import java.util.Base64;
 import java.util.UUID;
 
 @Service
-@Primary // Đánh dấu đây là Service lưu trữ chính
+@Primary
 @RequiredArgsConstructor
 @Slf4j
 public class ImageKitStorageServiceImpl implements FileStorageService {
@@ -36,17 +36,28 @@ public class ImageKitStorageServiceImpl implements FileStorageService {
     @Value("${imagekit.private-key}")
     private String privateKey;
 
+    // --- 1. Hàm cũ (Giữ nguyên để không lỗi code cũ) ---
     @Override
     public String uploadFile(MultipartFile file) {
+        // Gọi hàm mới với folder mặc định
+        return uploadFile(file, "mindrevol_uploads");
+    }
+
+    // --- 2. Hàm mới (Cho phép tùy chỉnh folder) ---
+    @Override
+    public String uploadFile(MultipartFile file, String folder) {
         try {
             String fileName = file.getOriginalFilename();
             if (fileName == null || fileName.isEmpty()) {
                 fileName = UUID.randomUUID().toString();
             }
-            // Loại bỏ khoảng trắng để URL đẹp hơn
-            fileName = fileName.replaceAll("\\s+", "_");
+            // Làm sạch tên file
+            fileName = fileName.replaceAll("[^a-zA-Z0-9.-]", "_");
 
-            return uploadToImageKit(file.getBytes(), fileName);
+            // Nếu folder null thì lấy mặc định
+            String targetFolder = (folder != null && !folder.isEmpty()) ? folder : "mindrevol_uploads";
+
+            return uploadToImageKit(file.getBytes(), fileName, targetFolder);
         } catch (IOException e) {
             log.error("Failed to read file bytes", e);
             throw new RuntimeException("Error reading file content", e);
@@ -56,26 +67,24 @@ public class ImageKitStorageServiceImpl implements FileStorageService {
     @Override
     public String uploadStream(InputStream inputStream, String fileName, String contentType, long size) {
         try {
-            return uploadToImageKit(inputStream.readAllBytes(), fileName);
+            return uploadToImageKit(inputStream.readAllBytes(), fileName, "mindrevol_processed");
         } catch (IOException e) {
             log.error("Failed to read input stream", e);
             throw new RuntimeException("Error uploading stream", e);
         }
     }
 
-    private String uploadToImageKit(byte[] fileBytes, String fileName) {
+    // [HELPER] Hàm upload thực tế
+    private String uploadToImageKit(byte[] fileBytes, String fileName, String folder) {
         try {
-            // 1. Tạo Header Auth (Basic Auth với Private Key)
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
-            String auth = privateKey + ":"; // Password để trống
+            String auth = privateKey + ":"; 
             String encodedAuth = Base64.getEncoder().encodeToString(auth.getBytes());
             headers.set("Authorization", "Basic " + encodedAuth);
 
-            // 2. Tạo Body (File + Các tham số)
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             
-            // Đóng gói byte[] thành Resource để RestTemplate hiểu là file upload
             ByteArrayResource fileResource = new ByteArrayResource(fileBytes) {
                 @Override
                 public String getFilename() {
@@ -85,18 +94,16 @@ public class ImageKitStorageServiceImpl implements FileStorageService {
             
             body.add("file", fileResource);
             body.add("fileName", fileName);
-            body.add("useUniqueFileName", "true"); // Để ImageKit tự thêm ký tự ngẫu nhiên tránh trùng
-            body.add("folder", "mindrevol_uploads"); // Gom vào 1 thư mục cho gọn
+            body.add("useUniqueFileName", "true");
+            body.add("folder", folder); // Folder động
 
-            // 3. Gửi Request
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
             ResponseEntity<String> response = restTemplate.postForEntity(uploadUrl, requestEntity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK || response.getStatusCode() == HttpStatus.CREATED) {
-                // 4. Parse kết quả để lấy URL
                 JsonNode root = objectMapper.readTree(response.getBody());
                 String secureUrl = root.path("url").asText();
-                log.info("Uploaded to ImageKit: {}", secureUrl);
+                log.info("Uploaded to ImageKit [{}]: {}", folder, secureUrl);
                 return secureUrl;
             } else {
                 throw new RuntimeException("ImageKit upload failed with status: " + response.getStatusCode());
@@ -120,8 +127,6 @@ public class ImageKitStorageServiceImpl implements FileStorageService {
 
     @Override
     public void deleteFile(String fileUrl) {
-        // Với MVP và gói Free dung lượng lớn, ta tạm bỏ qua việc xóa trên Cloud để giảm độ phức tạp.
-        // Chỉ cần xóa link trong DB là User không thấy nữa.
         log.warn("Skipping delete file on ImageKit (MVP mode): {}", fileUrl);
     }
 }

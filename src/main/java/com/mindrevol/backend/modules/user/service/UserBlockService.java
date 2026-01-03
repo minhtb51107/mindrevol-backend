@@ -4,8 +4,9 @@ import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 import java.util.List;
 
 public interface UserBlockService {
-    void blockUser(Long userId, Long blockedId);
-    void unblockUser(Long userId, Long blockedId);
-    List<UserSummaryResponse> getBlockList(Long userId); // <--- Tên hàm phải là getBlockList
-    boolean isBlocked(Long userId, Long targetUserId);
+    // [UUID] Đổi Long -> String
+    void blockUser(String userId, String blockedId);
+    void unblockUser(String userId, String blockedId);
+    List<UserSummaryResponse> getBlockList(String userId);
+    boolean isBlocked(String userId, String targetUserId);
 }

@@ -1,7 +1,6 @@
 package com.mindrevol.backend.modules.journey.repository;
 
 import com.mindrevol.backend.modules.journey.entity.JourneyParticipant;
-import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Slice;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -14,28 +13,30 @@ import java.util.List;
 import java.util.Optional;
 
 @Repository
-public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, Long> {
+public interface JourneyParticipantRepository extends JpaRepository<JourneyParticipant, String> {
 
     @Query("SELECT jp FROM JourneyParticipant jp JOIN FETCH jp.journey WHERE jp.user.id = :userId ORDER BY jp.lastCheckinAt DESC")
-    List<JourneyParticipant> findAllByUserId(@Param("userId") Long userId);
+    List<JourneyParticipant> findAllByUserId(@Param("userId") String userId);
     
-    Page<JourneyParticipant> findAllByUserId(Long userId, Pageable pageable);
+    // [MỚI] Tìm các hành trình đang hoạt động (ONGOING) của user
+    @Query("SELECT jp FROM JourneyParticipant jp " +
+           "JOIN FETCH jp.journey j " +
+           "WHERE jp.user.id = :userId AND j.status = 'ONGOING' " +
+           "ORDER BY j.startDate DESC")
+    List<JourneyParticipant> findAllActiveByUserId(@Param("userId") String userId);
 
-    List<JourneyParticipant> findAllByJourneyId(Long journeyId);
+    List<JourneyParticipant> findAllByJourneyId(String journeyId);
 
-    boolean existsByJourneyIdAndUserId(Long journeyId, Long userId);
+    boolean existsByJourneyIdAndUserId(String journeyId, String userId);
     
-    Optional<JourneyParticipant> findByJourneyIdAndUserId(Long journeyId, Long userId);
+    Optional<JourneyParticipant> findByJourneyIdAndUserId(String journeyId, String userId);
     
-    long countByJourneyId(Long journeyId);
+    long countByJourneyId(String journeyId);
 
     @Query("SELECT COUNT(jp) FROM JourneyParticipant jp JOIN jp.journey j " +
            "WHERE jp.user.id = :userId AND j.status = 'ONGOING'")
-    long countActiveJourneysByUserId(@Param("userId") Long userId);
+    long countActiveJourneysByUserId(@Param("userId") String userId);
 
-    // [THÊM MỚI] Query tìm người cần nhắc nhở
-    // Logic: Hành trình đang diễn ra (ONGOING) VÀ (Chưa checkin bao giờ HOẶC checkin lần cuối trước 00:00 hôm nay)
-    // Dùng JOIN FETCH user để khi job gửi noti không bị lỗi Lazy Loading user ID
     @Query("SELECT jp FROM JourneyParticipant jp " +
            "JOIN FETCH jp.journey j " +
            "JOIN FETCH jp.user u " +

@@ -6,8 +6,8 @@ import lombok.Data;
 @Data
 @Builder
 public class LinkedAccountResponse {
-    private String provider; // GOOGLE, FACEBOOK, TIKTOK
-    private String email;    // Email của tài khoản MXH
+    private String provider; 
+    private String email;    
     private String avatarUrl;
     private boolean connected; 
 }

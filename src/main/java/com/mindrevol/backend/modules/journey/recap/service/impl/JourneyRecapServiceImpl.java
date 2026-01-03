@@ -30,11 +30,11 @@ public class JourneyRecapServiceImpl implements JourneyRecapService {
 
     @Override
     @Transactional(readOnly = true)
-    public Page<CheckinResponse> getUserRecapFeed(Long journeyId, User currentUser, Pageable pageable) {
+    public Page<CheckinResponse> getUserRecapFeed(String journeyId, User currentUser, Pageable pageable) {
         Journey journey = journeyRepository.findById(journeyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
 
-        // [FIX] findMyCheckinsInJourney giờ đã nhận Long ID ở Repository
+        // [UUID] findMyCheckinsInJourney Repository đã nhận String ID
         Page<Checkin> myCheckins = checkinRepository.findMyCheckinsInJourney(journeyId, currentUser.getId(), pageable);
 
         return myCheckins.map(checkin -> {

@@ -8,9 +8,9 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class FriendshipResponse {
-    private Long id;
-    private UserSummaryResponse friend; // Thông tin người bạn (đã có class này trong code cũ của bạn)
+    private String id; // [UUID] String (ID của Friendship)
+    private UserSummaryResponse friend; 
     private FriendshipStatus status;
-    private boolean isRequester; // True nếu mình là người gửi lời mời
+    private boolean isRequester; 
     private LocalDateTime createdAt;
 }

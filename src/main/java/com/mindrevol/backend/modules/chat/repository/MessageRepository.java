@@ -12,38 +12,30 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
+// [SỬA] JpaRepository<Message, String>
 @Repository
-public interface MessageRepository extends JpaRepository<Message, Long> {
+public interface MessageRepository extends JpaRepository<Message, String> {
     
-    // Lấy danh sách tin nhắn của hội thoại (phân trang)
-    Page<Message> findByConversationIdOrderByCreatedAtDesc(Long conversationId, Pageable pageable);
+    // [SỬA] conversationId là String
+    Page<Message> findByConversationIdOrderByCreatedAtDesc(String conversationId, Pageable pageable);
 
-    /**
-     * Tìm tin nhắn mới nhất trong hội thoại
-     */
-    Optional<Message> findTopByConversationIdOrderByCreatedAtDesc(Long conversationId);
+    Optional<Message> findTopByConversationIdOrderByCreatedAtDesc(String conversationId);
 
-    /**
-     * Đếm số tin nhắn chưa đọc trong 1 hội thoại (dành cho User hiện tại)
-     * Logic: Tin nhắn không phải của mình gửi (sender.id != me) VÀ trạng thái chưa SEEN
-     */
+    // [SỬA] Tham số String
     @Query("SELECT COUNT(m) FROM Message m " +
            "WHERE m.conversation.id = :convId " +
-           "AND m.sender.id <> :currentUserId " +  // [FIX] sender.id thay vì senderId
+           "AND m.sender.id <> :currentUserId " +
            "AND m.deliveryStatus <> 'SEEN'")
-    long countUnreadMessages(@Param("convId") Long convId, @Param("currentUserId") Long currentUserId);
+    long countUnreadMessages(@Param("convId") String convId, @Param("currentUserId") String currentUserId);
 
-    /**
-     * [MỚI] Tìm danh sách các tin nhắn chưa đọc để cập nhật status
-     * Lấy các tin trong hội thoại, không phải do mình gửi, và status khác SEEN
-     */
+    // [SỬA] Tham số String
     @Query("SELECT m FROM Message m " +
            "WHERE m.conversation.id = :conversationId " +
-           "AND m.sender.id <> :userId " +          // [FIX] sender.id thay vì senderId
+           "AND m.sender.id <> :userId " +
            "AND m.deliveryStatus <> :status")
     List<Message> findUnreadMessagesInConversation(
-        @Param("conversationId") Long conversationId, 
-        @Param("userId") Long userId, 
+        @Param("conversationId") String conversationId, 
+        @Param("userId") String userId, 
         @Param("status") MessageDeliveryStatus status
     );
 }

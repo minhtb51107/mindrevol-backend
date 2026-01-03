@@ -20,11 +20,12 @@ public class UserSettingsController {
 
     private final UserService userService;
 
+    // [UUID] SecurityUtils.getCurrentUserId() trả về String
     @GetMapping("/notifications")
     @PreAuthorize("isAuthenticated()")
     @Operation(summary = "Lấy cài đặt thông báo của tôi")
     public ResponseEntity<ApiResponse<UserSettings>> getNotificationSettings() {
-        Long userId = SecurityUtils.getCurrentUserId();
+        String userId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(userService.getNotificationSettings(userId)));
     }
 
@@ -33,7 +34,7 @@ public class UserSettingsController {
     @Operation(summary = "Cập nhật cài đặt thông báo")
     public ResponseEntity<ApiResponse<UserSettings>> updateNotificationSettings(
             @RequestBody UpdateNotificationSettingsRequest request) {
-        Long userId = SecurityUtils.getCurrentUserId();
+        String userId = SecurityUtils.getCurrentUserId();
         UserSettings settings = userService.updateNotificationSettings(userId, request);
         return ResponseEntity.ok(ApiResponse.success(settings));
     }

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.6.xsd">
+
+    <changeSet id="007-fix-invitation-unique-constraint" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <sqlCheck expectedResult="1">
+                SELECT count(*) FROM pg_constraint WHERE conname = 'uk_ji_spam'
+            </sqlCheck>
+        </preConditions>
+
+        <sql>
+            ALTER TABLE journey_invitations DROP CONSTRAINT IF EXISTS uk_ji_spam;
+        </sql>
+
+        <sql dbms="postgresql">
+            CREATE UNIQUE INDEX uk_ji_spam ON journey_invitations (journey_id, invitee_id) WHERE status = 'PENDING';
+        </sql>
+        
+        <rollback>
+            <sql>DROP INDEX IF EXISTS uk_ji_spam;</sql>
+            <addUniqueConstraint tableName="journey_invitations" 
+                                 columnNames="journey_id, invitee_id" 
+                                 constraintName="uk_ji_spam"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

@@ -14,10 +14,8 @@ import lombok.experimental.SuperBuilder;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@SuperBuilder // [FIX] SuperBuilder
+@SuperBuilder
 public class CheckinReaction extends BaseEntity {
-
-    // [FIX] Đã xóa @Id UUID
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "checkin_id", nullable = false)
@@ -32,6 +30,4 @@ public class CheckinReaction extends BaseEntity {
 
     @Column(name = "media_url")
     private String mediaUrl;
-    
-    // BaseEntity đã có createdAt
 }

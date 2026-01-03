@@ -1,6 +1,6 @@
 package com.mindrevol.backend.config;
 
-import com.mindrevol.backend.modules.user.entity.User; // Import chính xác Entity User của bạn
+import com.mindrevol.backend.modules.user.entity.User;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.data.auditing.DateTimeProvider;
@@ -18,7 +18,8 @@ import java.util.Optional;
 public class JpaAuditingConfig {
 
     @Bean
-    public AuditorAware<Long> auditorProvider() { // [QUAN TRỌNG] Phải trả về Long
+    // [SỬA 1] Đổi AuditorAware<Long> thành AuditorAware<String>
+    public AuditorAware<String> auditorProvider() { 
         return new AuditorAwareImpl();
     }
 
@@ -27,26 +28,29 @@ public class JpaAuditingConfig {
         return () -> Optional.of(OffsetDateTime.now());
     }
 
-    public static class AuditorAwareImpl implements AuditorAware<Long> {
+    // [SỬA 2] Implement AuditorAware<String> thay vì AuditorAware<Long>
+    public static class AuditorAwareImpl implements AuditorAware<String> {
+        
         @Override
-        public Optional<Long> getCurrentAuditor() {
+        // [SỬA 3] Trả về Optional<String>
+        public Optional<String> getCurrentAuditor() {
             Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
 
             // 1. Kiểm tra nếu chưa đăng nhập hoặc là anonymousUser
             if (authentication == null ||
                 !authentication.isAuthenticated() ||
                 authentication instanceof AnonymousAuthenticationToken ||
-                "anonymousUser".equals(authentication.getPrincipal())) { // Xử lý trường hợp chuỗi "anonymousUser"
-                return Optional.empty(); // Trả về null cho database (cột created_by sẽ là null)
+                "anonymousUser".equals(authentication.getPrincipal())) {
+                return Optional.empty();
             }
 
             // 2. Lấy Principal
             Object principal = authentication.getPrincipal();
 
-            // 3. Kiểm tra và ép kiểu sang Entity User của bạn
+            // 3. Kiểm tra và ép kiểu sang Entity User
             if (principal instanceof User) {
-                Long userId = ((User) principal).getId();
-                return Optional.ofNullable(userId);
+                // userId bây giờ là String (UUID), nên trả về đúng kiểu String là hợp lệ
+                return Optional.ofNullable(((User) principal).getId());
             }
 
             return Optional.empty();

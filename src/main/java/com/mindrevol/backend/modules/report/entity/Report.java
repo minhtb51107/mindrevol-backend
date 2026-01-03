@@ -4,6 +4,7 @@ import com.mindrevol.backend.common.entity.BaseEntity;
 import com.mindrevol.backend.modules.user.entity.User;
 import jakarta.persistence.*;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 
 @Entity
 @Table(name = "reports")
@@ -11,15 +12,16 @@ import lombok.*;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
+@SuperBuilder
 public class Report extends BaseEntity {
 
-    // Người gửi báo cáo
+    // [UUID] ID chính kế thừa từ BaseEntity (String)
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "reporter_id", nullable = false)
     private User reporter;
 
-    // ID của đối tượng bị báo cáo (Lưu String để chứa được cả UUID lẫn Long)
+    // [UUID] Target ID luôn là String (UUID của User/Checkin/Comment...)
     @Column(nullable = false)
     private String targetId;
 
@@ -31,17 +33,16 @@ public class Report extends BaseEntity {
     @Column(nullable = false)
     private ReportReason reason;
 
-    private String description; // Mô tả thêm của user (nếu có)
+    private String description; 
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
     private ReportStatus status = ReportStatus.PENDING;
 
-    // Admin nào xử lý (Optional - để null cũng được)
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "handler_id")
     private User handler;
     
-    private String adminNote; // Ghi chú của admin khi xử lý
+    private String adminNote; 
 }

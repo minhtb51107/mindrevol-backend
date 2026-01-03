@@ -1,6 +1,6 @@
 package com.mindrevol.backend.common.entity;
 
-import com.github.f4b6a3.tsid.TsidCreator;
+import com.github.f4b6a3.uuid.UuidCreator; // Import thư viện mới
 import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -24,19 +24,19 @@ import java.util.Objects;
 public abstract class BaseEntity {
 
     @Id
-    @Column(name = "id", nullable = false, updatable = false)
-    private Long id;
+    @Column(name = "id", unique = true, nullable = false, updatable = false, length = 36)
+    private String id;
 
-    // --- CẤU HÌNH TSID ---
+    // --- CẤU HÌNH UUID v7 ---
     @PrePersist
     public void generateId() {
         if (this.id == null) {
-            // [FIX] Sửa getTsid256() thành getTsid()
-            // TSID chuẩn là 64-bit, khớp hoàn hảo với Database BIGINT và Java Long
-            this.id = TsidCreator.getTsid().toLong();
+            // Sinh UUID v7 (Time-ordered)
+            // toString() sẽ trả về dạng chuỗi chuẩn: "018b6e3f-..."
+            this.id = UuidCreator.getTimeOrderedEpoch().toString();
         }
     }
-    // ---------------------
+    // ------------------------
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)
@@ -48,11 +48,11 @@ public abstract class BaseEntity {
 
     @CreatedBy
     @Column(name = "created_by", updatable = false)
-    private Long createdBy;
+    private String createdBy;
 
     @LastModifiedBy
     @Column(name = "last_modified_by")
-    private Long lastModifiedBy;
+    private String lastModifiedBy;
 
     @Column(name = "deleted_at")
     private LocalDateTime deletedAt;

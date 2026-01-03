@@ -25,11 +25,11 @@ public class JourneyRecapController {
     private final JourneyRecapService journeyRecapService;
     private final UserService userService;
 
-    // [FIX] UUID -> Long
+    // [UUID] @PathVariable String id
     @GetMapping("/{id}/recap")
     @Operation(summary = "Lấy album ảnh/bài đăng của user trong hành trình (Dạng Instagram Grid)")
     public ResponseEntity<ApiResponse<Page<CheckinResponse>>> getMyJourneyRecap(
-            @PathVariable Long id,
+            @PathVariable String id,
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable
     ) {
         User currentUser = userService.getUserById(SecurityUtils.getCurrentUserId());

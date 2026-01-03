@@ -1,8 +1,9 @@
 package com.mindrevol.backend.modules.habit.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import com.mindrevol.backend.common.entity.BaseEntity; // Kiểm tra lại package BaseEntity
+import lombok.experimental.SuperBuilder;
 
 import java.time.LocalDate;
 
@@ -14,25 +15,23 @@ import java.time.LocalDate;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@Builder
-// Không cần @EntityListeners nữa
+@SuperBuilder
 public class HabitLog extends BaseEntity {
 
-    // Đã xóa id UUID
+    // [UUID] ID String từ BaseEntity
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "habit_id", nullable = false)
     private Habit habit;
 
+    // [UUID] String (ID của Checkin)
     @Column(name = "checkin_id")
-    private Long checkinId; // [FIX] Đổi từ UUID sang Long (Link tới bảng Checkin dùng ID số)
+    private String checkinId; 
 
     @Column(nullable = false)
     private LocalDate logDate;
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
-    private HabitLogStatus status; // COMPLETED, FAILED, SKIPPED
-
-    // Đã xóa createdAt
+    private HabitLogStatus status; 
 }

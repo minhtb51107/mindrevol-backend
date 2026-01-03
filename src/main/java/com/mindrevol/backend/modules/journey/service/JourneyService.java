@@ -1,50 +1,34 @@
 package com.mindrevol.backend.modules.journey.service;
 
-import com.mindrevol.backend.modules.journey.dto.request.*;
+import com.mindrevol.backend.modules.journey.dto.request.CreateJourneyRequest;
 import com.mindrevol.backend.modules.journey.dto.response.*;
 import com.mindrevol.backend.modules.journey.entity.Journey;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 
 import java.util.List;
 
 public interface JourneyService {
-    JourneyResponse createJourney(CreateJourneyRequest request, Long userId);
+    JourneyResponse createJourney(CreateJourneyRequest request, String userId);
+    JourneyResponse joinJourney(String inviteCode, String userId);
+    JourneyResponse getJourneyDetail(String userId, String journeyId);
+    List<JourneyResponse> getMyJourneys(String userId);
+    void leaveJourney(String journeyId, String userId);
+    JourneyResponse updateJourney(String journeyId, CreateJourneyRequest request, String userId);
+    void kickMember(String journeyId, String memberId, String requesterId);
+    void transferOwnership(String journeyId, String currentOwnerId, String newOwnerId);
+    List<JourneyParticipantResponse> getJourneyParticipants(String journeyId);
+    void deleteJourney(String journeyId, String userId);
+    Journey getJourneyEntity(String journeyId);
+    List<JourneyRequestResponse> getPendingRequests(String journeyId, String userId);
+    void approveRequest(String journeyId, String requestId, String ownerId);
+    void rejectRequest(String journeyId, String requestId, String ownerId);
     
-    // [ĐỔI] Join bằng inviteCode (đơn giản hơn là request object)
-    JourneyResponse joinJourney(String inviteCode, Long userId);
+    // --- Method cho Profile ---
+    List<UserActiveJourneyResponse> getUserActiveJourneys(String userId);
     
-    List<JourneyResponse> getMyJourneys(Long userId);
-    
-    void leaveJourney(Long journeyId, Long userId);
-    
-    JourneyResponse updateJourney(Long journeyId, CreateJourneyRequest request, Long userId); // Update chung
-    
-    void kickMember(Long journeyId, Long memberId, Long requesterId);
-    
-    // Widget cho Home Screen
-    // JourneyWidgetResponse getWidgetInfo(Long journeyId, Long userId); 
-    // -> Tạm bỏ Widget phức tạp, dùng getMyJourneys là đủ info hiển thị rồi.
-    
-    // Quản lý Request (nếu để Private)
-    // void approveJoinRequest(Long requestId, Long adminId);
-    // void rejectJoinRequest(Long requestId, Long adminId);
-    
-    // Template
-    // List<JourneyResponse> getDiscoveryTemplates();
-    // JourneyResponse forkJourney(Long templateId, Long userId);
-    
-    // Tính năng vui vẻ
-    // void nudgeMember(Long journeyId, Long memberId, Long requesterId);
-    
-    void transferOwnership(Long journeyId, Long currentOwnerId, Long newOwnerId);
-    
-    List<JourneyParticipantResponse> getJourneyParticipants(Long journeyId);
-    
-    void deleteJourney(Long journeyId, Long userId);
+    // [MỚI] Thêm hàm này để lấy hành trình đã kết thúc
+    List<UserActiveJourneyResponse> getUserFinishedJourneys(String userId);
 
-    // List<JourneyRequestResponse> getPendingRequests(Long journeyId, Long userId);
-
-    // Helper cho nội bộ
-    Journey getJourneyEntity(Long journeyId);
-
-	JourneyResponse getJourneyDetail(Long userId, Long journeyId);
+    JourneyAlertResponse getJourneyAlerts(String userId);
+    List<UserSummaryResponse> getInvitableFriends(String journeyId, String userId);
 }

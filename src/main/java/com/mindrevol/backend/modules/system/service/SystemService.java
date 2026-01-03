@@ -32,7 +32,7 @@ public class SystemService {
 
     @Transactional
     public void submitFeedback(CreateFeedbackRequest request) {
-        Long userId = SecurityUtils.getCurrentUserId();
+        String userId = SecurityUtils.getCurrentUserId();
         User user = userRepository.findById(userId).orElse(null);
 
         UserFeedback feedback = UserFeedback.builder()

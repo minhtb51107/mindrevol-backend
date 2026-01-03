@@ -12,14 +12,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate; 
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.messaging.simp.SimpMessagingTemplate;
 
-import java.util.concurrent.TimeUnit; 
 import java.util.HashMap;
 import java.util.Map;
+import java.util.concurrent.TimeUnit; 
 
 @Service
 @RequiredArgsConstructor
@@ -34,10 +34,10 @@ public class NotificationService {
 
     @Async 
     @Transactional
-    public void sendAndSaveNotification(Long recipientId, Long senderId, NotificationType type,
+    // [UUID] recipientId, senderId là String
+    public void sendAndSaveNotification(String recipientId, String senderId, NotificationType type,
                                         String title, String message, String referenceId, String imageUrl) {
         
-        // --- LOGIC MỚI: CHỐNG SPAM (THROTTLING) ---
         if (type == NotificationType.REACTION || type == NotificationType.COMMENT) {
             String throttleKey = "noti_throttle:" + recipientId + ":" + type + ":" + referenceId;
             
@@ -48,7 +48,6 @@ public class NotificationService {
             
             redisTemplate.opsForValue().set(throttleKey, "1", 30, TimeUnit.MINUTES);
         }
-        // ------------------------------------------
 
         User recipient = userRepository.findById(recipientId)
                 .orElseThrow(() -> new ResourceNotFoundException("Recipient not found"));
@@ -58,7 +57,6 @@ public class NotificationService {
             sender = userRepository.findById(senderId).orElse(null);
         }
 
-        // 1. Lưu vào Database
         Notification notification = Notification.builder()
                 .recipient(recipient)
                 .sender(sender)
@@ -76,7 +74,7 @@ public class NotificationService {
             Map<String, String> dataPayload = new HashMap<>();
             dataPayload.put("type", type.name());
             if (referenceId != null) dataPayload.put("referenceId", referenceId);
-            if (sender != null) dataPayload.put("senderId", sender.getId().toString());
+            if (sender != null) dataPayload.put("senderId", sender.getId());
             if (imageUrl != null) dataPayload.put("imageUrl", imageUrl);
 
             firebaseService.sendNotification(
@@ -87,23 +85,24 @@ public class NotificationService {
             );
         }
 
-        // --- 2. Gửi WebSocket ---
         NotificationResponse response = toResponse(notification);
         
+        // Gửi qua WebSocket
         messagingTemplate.convertAndSendToUser(
-                recipient.getEmail(), 
+                recipient.getId(), // [NOTE] Dùng ID làm destination cho chính xác
                 "/queue/notifications", 
                 response
         );
     }
 
-    public Page<NotificationResponse> getMyNotifications(Long userId, Pageable pageable) {
+    public Page<NotificationResponse> getMyNotifications(String userId, Pageable pageable) {
         return notificationRepository.findByRecipientIdOrderByCreatedAtDesc(userId, pageable)
                 .map(this::toResponse);
     }
 
     @Transactional
-    public void markAsRead(Long notificationId, Long userId) {
+    // [UUID] notificationId là String
+    public void markAsRead(String notificationId, String userId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
         
@@ -116,11 +115,11 @@ public class NotificationService {
     }
 
     @Transactional
-    public void markAllAsRead(Long userId) {
+    public void markAllAsRead(String userId) {
         notificationRepository.markAllAsRead(userId);
     }
     
-    public long countUnread(Long userId) {
+    public long countUnread(String userId) {
         return notificationRepository.countByRecipientIdAndIsReadFalse(userId);
     }
 
@@ -133,7 +132,7 @@ public class NotificationService {
                 .referenceId(n.getReferenceId())
                 .imageUrl(n.getImageUrl())
                 .isRead(n.isRead())
-                .createdAt(n.getCreatedAt()) // [FIX] Bỏ .toLocalDateTime() đi
+                .createdAt(n.getCreatedAt()) 
                 .senderId(n.getSender() != null ? n.getSender().getId() : null)
                 .senderName(n.getSender() != null ? n.getSender().getFullname() : "System")
                 .build();

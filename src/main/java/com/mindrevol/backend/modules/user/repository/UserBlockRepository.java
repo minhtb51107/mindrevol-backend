@@ -10,21 +10,21 @@ import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 
+// [UUID] JpaRepository<UserBlock, String>
 @Repository
-public interface UserBlockRepository extends JpaRepository<UserBlock, Long> {
+public interface UserBlockRepository extends JpaRepository<UserBlock, String> {
     
-    boolean existsByBlockerIdAndBlockedId(Long blockerId, Long blockedId);
+    // [UUID] String
+    boolean existsByBlockerIdAndBlockedId(String blockerId, String blockedId);
     
-    Optional<UserBlock> findByBlockerIdAndBlockedId(Long blockerId, Long blockedId);
+    Optional<UserBlock> findByBlockerIdAndBlockedId(String blockerId, String blockedId);
 
-    // [QUAN TRỌNG] Lấy tất cả ID liên quan đến chặn (2 chiều)
-    // 1. Những người TÔI chặn (blocker = me -> lấy blocked)
-    // 2. Những người chặn TÔI (blocked = me -> lấy blocker)
+    // [UUID] Trả về Set<String>
     @Query(value = "SELECT ub.blocked_id FROM user_blocks ub WHERE ub.blocker_id = :userId " +
                    "UNION " +
                    "SELECT ub.blocker_id FROM user_blocks ub WHERE ub.blocked_id = :userId", 
            nativeQuery = true)
-    Set<Long> findAllBlockedUserIdsInteraction(@Param("userId") Long userId);
+    Set<String> findAllBlockedUserIdsInteraction(@Param("userId") String userId);
     
-    List<UserBlock> findAllByBlockerId(Long blockerId);
+    List<UserBlock> findAllByBlockerId(String blockerId);
 }

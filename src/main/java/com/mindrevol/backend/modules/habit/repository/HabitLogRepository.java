@@ -1,15 +1,15 @@
 package com.mindrevol.backend.modules.habit.repository;
 
+import com.mindrevol.backend.modules.habit.entity.HabitLog;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
-import com.mindrevol.backend.modules.habit.entity.HabitLog;
-
 import java.time.LocalDate;
 import java.util.Optional;
-import java.util.UUID;
 
+// [UUID] String
 @Repository
-public interface HabitLogRepository extends JpaRepository<HabitLog, Long> {
-    Optional<HabitLog> findByHabitIdAndLogDate(Long long1, LocalDate logDate);
-};
+public interface HabitLogRepository extends JpaRepository<HabitLog, String> {
+    // [UUID] habitId là String
+    Optional<HabitLog> findByHabitIdAndLogDate(String habitId, LocalDate logDate);
+}

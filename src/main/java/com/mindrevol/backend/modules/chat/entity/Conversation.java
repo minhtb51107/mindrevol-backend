@@ -16,10 +16,8 @@ import java.time.LocalDateTime;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@SuperBuilder // [FIX] Dùng SuperBuilder
+@SuperBuilder
 public class Conversation extends BaseEntity {
-
-    // [FIX] Đã xóa @Id Long id (BaseEntity đã có)
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "user1_id", nullable = false)
@@ -37,14 +35,14 @@ public class Conversation extends BaseEntity {
     private LocalDateTime lastMessageAt;
 
     @Column(name = "last_sender_id")
-    private Long lastSenderId;
+    private String lastSenderId; // [SỬA] Long -> String
 
     // --- Read Receipts ---
     @Column(name = "user1_last_read_msg_id")
-    private Long user1LastReadMessageId;
+    private String user1LastReadMessageId; // [SỬA] Long -> String
 
     @Column(name = "user2_last_read_msg_id")
-    private Long user2LastReadMessageId;
+    private String user2LastReadMessageId; // [SỬA] Long -> String
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")

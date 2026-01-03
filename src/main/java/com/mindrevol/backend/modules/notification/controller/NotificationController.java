@@ -18,33 +18,30 @@ public class NotificationController {
 
     private final NotificationService notificationService;
 
-    // 1. Lấy danh sách thông báo
     @GetMapping
     public ResponseEntity<ApiResponse<Page<NotificationResponse>>> getMyNotifications(
             @PageableDefault(size = 20) Pageable pageable) {
-        Long userId = SecurityUtils.getCurrentUserId();
+        String userId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(notificationService.getMyNotifications(userId, pageable)));
     }
 
-    // 2. Đếm số lượng chưa đọc
     @GetMapping("/unread-count")
     public ResponseEntity<ApiResponse<Long>> countUnread() {
-        Long userId = SecurityUtils.getCurrentUserId();
+    	String userId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(notificationService.countUnread(userId)));
     }
 
-    // 3. Đánh dấu 1 cái là đã đọc
+    // [UUID] @PathVariable String id
     @PatchMapping("/{id}/read")
-    public ResponseEntity<ApiResponse<Void>> markAsRead(@PathVariable Long id) {
-        Long userId = SecurityUtils.getCurrentUserId();
+    public ResponseEntity<ApiResponse<Void>> markAsRead(@PathVariable String id) {
+    	String userId = SecurityUtils.getCurrentUserId();
         notificationService.markAsRead(id, userId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // 4. Đánh dấu tất cả là đã đọc
     @PatchMapping("/read-all")
     public ResponseEntity<ApiResponse<Void>> markAllAsRead() {
-        Long userId = SecurityUtils.getCurrentUserId();
+    	String userId = SecurityUtils.getCurrentUserId();
         notificationService.markAllAsRead(userId);
         return ResponseEntity.ok(ApiResponse.success(null));
     }

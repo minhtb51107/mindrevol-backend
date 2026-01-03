@@ -7,8 +7,8 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
+// [UUID] JpaRepository<Report, String>
 @Repository
-public interface ReportRepository extends JpaRepository<Report, Long> {
-    // Lấy danh sách report chờ xử lý
+public interface ReportRepository extends JpaRepository<Report, String> {
     Page<Report> findByStatusOrderByCreatedAtAsc(ReportStatus status, Pageable pageable);
 }

@@ -7,15 +7,12 @@ import org.springframework.data.domain.Pageable;
 
 public interface JourneyInvitationService {
     
-    // [FIX] Đổi UUID -> Long
-    void inviteFriendToJourney(User inviter, Long journeyId, Long friendId);
+    // [UUID] String journeyId, String friendId
+    void inviteFriendToJourney(User inviter, String journeyId, String friendId);
 
-    // Chấp nhận lời mời
-    void acceptInvitation(User currentUser, Long invitationId);
+    void acceptInvitation(User currentUser, String invitationId);
 
-    // Từ chối lời mời
-    void rejectInvitation(User currentUser, Long invitationId);
+    void rejectInvitation(User currentUser, String invitationId);
 
-    // Lấy danh sách lời mời đang chờ tôi duyệt
     Page<JourneyInvitationResponse> getMyPendingInvitations(User currentUser, Pageable pageable);
 }

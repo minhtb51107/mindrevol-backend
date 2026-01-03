@@ -24,7 +24,6 @@ public class JourneyInvitationController {
     private final JourneyInvitationService invitationService;
     private final UserService userService;
 
-    // 1. Mời bạn bè
     @PostMapping("/invite")
     public ResponseEntity<ApiResponse<Void>> inviteFriend(@Valid @RequestBody InviteFriendRequest request) {
         User currentUser = userService.getUserById(SecurityUtils.getCurrentUserId());
@@ -34,9 +33,9 @@ public class JourneyInvitationController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // 2. Chấp nhận lời mời
+    // [UUID] @PathVariable String invitationId
     @PostMapping("/{invitationId}/accept")
-    public ResponseEntity<ApiResponse<Void>> acceptInvitation(@PathVariable Long invitationId) {
+    public ResponseEntity<ApiResponse<Void>> acceptInvitation(@PathVariable String invitationId) {
         User currentUser = userService.getUserById(SecurityUtils.getCurrentUserId());
         
         invitationService.acceptInvitation(currentUser, invitationId);
@@ -44,9 +43,9 @@ public class JourneyInvitationController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // 3. Từ chối lời mời
+    // [UUID] @PathVariable String invitationId
     @PostMapping("/{invitationId}/reject")
-    public ResponseEntity<ApiResponse<Void>> rejectInvitation(@PathVariable Long invitationId) {
+    public ResponseEntity<ApiResponse<Void>> rejectInvitation(@PathVariable String invitationId) {
         User currentUser = userService.getUserById(SecurityUtils.getCurrentUserId());
         
         invitationService.rejectInvitation(currentUser, invitationId);
@@ -54,7 +53,6 @@ public class JourneyInvitationController {
         return ResponseEntity.ok(ApiResponse.success(null));
     }
 
-    // 4. Xem danh sách lời mời đang chờ
     @GetMapping("/pending")
     public ResponseEntity<ApiResponse<Page<JourneyInvitationResponse>>> getMyInvitations(
             @PageableDefault(size = 20, sort = "createdAt", direction = Sort.Direction.DESC) Pageable pageable) {

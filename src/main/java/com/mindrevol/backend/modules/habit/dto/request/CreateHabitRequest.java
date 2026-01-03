@@ -10,6 +10,6 @@ public class CreateHabitRequest {
     private String title;
     
     private String description;
-    private String frequency; // DAILY
+    private String frequency; 
     private LocalTime reminderTime;
 }

@@ -6,6 +6,7 @@ import lombok.Getter;
 @Getter
 @AllArgsConstructor
 public class UserBlockedEvent {
-    private final Long blockerId;
-    private final Long blockedId;
+    // [UUID] Đổi Long -> String
+    private String blockerId;
+    private String blockedId;
 }

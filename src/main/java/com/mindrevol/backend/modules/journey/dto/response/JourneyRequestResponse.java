@@ -1,17 +1,18 @@
 package com.mindrevol.backend.modules.journey.dto.response;
 
+import com.mindrevol.backend.modules.journey.entity.RequestStatus;
 import lombok.Builder;
 import lombok.Data;
 import java.time.LocalDateTime;
-import java.util.UUID;
 
 @Data
 @Builder
 public class JourneyRequestResponse {
-    private Long requestId;
-    private Long userId;
+    private String id;           // [FIX] Đổi Long -> String (UUID)
+    private String userId;       // [FIX] Đổi Long -> String (UUID)
     private String fullname;
     private String avatarUrl;
     private String handle;
-    private LocalDateTime createdAt;
+    private LocalDateTime requestedAt; // Tương ứng với createdAt
+    private RequestStatus status;
 }

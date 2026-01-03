@@ -25,6 +25,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -37,17 +38,24 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final JourneyMapper journeyMapper;
-    private final JourneyRequestRepository journeyRequestRepository; 
+    private final JourneyRequestRepository journeyRequestRepository;
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
-    public void inviteFriendToJourney(User inviter, Long journeyId, Long friendId) {
+    public void inviteFriendToJourney(User inviter, String journeyId, String friendId) {
         Journey journey = journeyRepository.findById(journeyId)
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
 
-        if (!participantRepository.existsByJourneyIdAndUserId(journeyId, inviter.getId())) {
-            throw new BadRequestException("Bạn không phải thành viên của hành trình này");
+        // 1. Kiểm tra người mời có trong nhóm không
+        JourneyParticipant inviterParticipant = participantRepository.findByJourneyIdAndUserId(journeyId, inviter.getId())
+                .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên của hành trình này"));
+
+        // [LOGIC MỚI] Kiểm tra quyền mời dựa trên Visibility
+        if (journey.getVisibility() == JourneyVisibility.PRIVATE) {
+            if (inviterParticipant.getRole() != JourneyRole.OWNER) {
+                throw new BadRequestException("Hành trình riêng tư: Chỉ chủ phòng mới được mời thành viên.");
+            }
         }
 
         long currentMembers = participantRepository.countByJourneyId(journeyId);
@@ -81,7 +89,7 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
                 NotificationType.JOURNEY_INVITE,
                 "Lời mời tham gia hành trình 🚀",
                 inviter.getFullname() + " mời bạn tham gia: " + journey.getName(),
-                journey.getId().toString(), 
+                journey.getId(), 
                 inviter.getAvatarUrl()
         );
         log.info("User {} invited User {} to Journey {}", inviter.getId(), friendId, journeyId);
@@ -89,7 +97,7 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
 
     @Override
     @Transactional
-    public void acceptInvitation(User currentUser, Long invitationId) {
+    public void acceptInvitation(User currentUser, String invitationId) {
         JourneyInvitation invitation = invitationRepository.findByIdAndInviteeId(invitationId, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Lời mời không tồn tại hoặc không dành cho bạn"));
 
@@ -104,66 +112,44 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
              throw new BadRequestException("Rất tiếc, hành trình này vừa đủ người rồi.");
         }
 
+        // [LOGIC MỚI] Nếu đã là thành viên -> Chỉ cần dọn dẹp và update trạng thái mời
         if (participantRepository.existsByJourneyIdAndUserId(journey.getId(), currentUser.getId())) {
             invitation.setStatus(JourneyInvitationStatus.ACCEPTED);
             invitationRepository.save(invitation);
+            cleanupPendingRequests(journey.getId(), currentUser.getId()); // Dọn rác
             return;
         }
 
-        User inviter = invitation.getInviter();
-        boolean isInviterVip = false;
+        // [LOGIC MỚI] Luôn vào thẳng (Vì logic inviteFriendToJourney đã chặn người không có quyền mời rồi)
+        // Nghĩa là: Nếu lời mời này tồn tại, nó hợp lệ để vào thẳng.
+        
+        JourneyParticipant participant = JourneyParticipant.builder()
+                .journey(journey) 
+                .user(currentUser)
+                .role(JourneyRole.MEMBER)
+                .currentStreak(0)
+                .totalCheckins(0)
+                .joinedAt(LocalDateTime.now())
+                .build();
+        
+        participantRepository.save(participant);
 
-        var inviterParticipantOpt = participantRepository.findByJourneyIdAndUserId(journey.getId(), inviter.getId());
-        if (inviterParticipantOpt.isPresent()) {
-            JourneyRole role = inviterParticipantOpt.get().getRole();
-            if (role == JourneyRole.OWNER) { 
-                isInviterVip = true;
-            }
-        }
-
-        boolean canJoinDirectly = (journey.getVisibility() == JourneyVisibility.PUBLIC) || isInviterVip;
-
-        if (canJoinDirectly) {
-            // [FIXED] Dùng Builder với Object Relationship (.journey, .user)
-            JourneyParticipant participant = JourneyParticipant.builder()
-                    .journey(journey) 
-                    .user(currentUser)
-                    .role(JourneyRole.MEMBER)
-                    .currentStreak(0)
-                    .totalCheckins(0)
-                    .joinedAt(LocalDateTime.now())
-                    .build();
-            
-            participantRepository.save(participant);
-
-            eventPublisher.publishEvent(new JourneyJoinedEvent(journey, currentUser));
-            
-            log.info("User {} joined Journey {} directly via invitation", currentUser.getId(), journey.getId());
-
-        } else {
-            boolean requestExists = journeyRequestRepository.existsByJourneyIdAndUserIdAndStatus(
-                    journey.getId(), currentUser.getId(), RequestStatus.PENDING);
-
-            if (!requestExists) {
-                // [NOTE] JourneyRequest cũng đã được cập nhật sang quan hệ Object
-                JourneyRequest request = JourneyRequest.builder()
-                        .journey(journey)
-                        .user(currentUser)
-                        .status(RequestStatus.PENDING)
-                        .build(); // BaseEntity tự lo createdAt
-                
-                journeyRequestRepository.save(request);
-                log.info("User {} accepted invitation but needs approval. Request created.", currentUser.getId());
-            }
-        }
-
+        // Update trạng thái lời mời
         invitation.setStatus(JourneyInvitationStatus.ACCEPTED);
         invitationRepository.save(invitation);
+
+        // [QUAN TRỌNG] Hủy/Xóa các request xin vào đang treo để Owner không phải duyệt nữa
+        cleanupPendingRequests(journey.getId(), currentUser.getId());
+
+        // Bắn event
+        eventPublisher.publishEvent(new JourneyJoinedEvent(journey, currentUser));
+        
+        log.info("User {} joined Journey {} directly via invitation", currentUser.getId(), journey.getId());
     }
 
     @Override
     @Transactional
-    public void rejectInvitation(User currentUser, Long invitationId) {
+    public void rejectInvitation(User currentUser, String invitationId) {
         JourneyInvitation invitation = invitationRepository.findByIdAndInviteeId(invitationId, currentUser.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Lời mời không tồn tại"));
 
@@ -179,5 +165,16 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
     public Page<JourneyInvitationResponse> getMyPendingInvitations(User currentUser, Pageable pageable) {
         return invitationRepository.findPendingInvitationsForUser(currentUser.getId(), pageable)
                 .map(journeyMapper::toInvitationResponse);
+    }
+
+    // [HÀM MỚI] Dọn dẹp request thừa sau khi đã vào nhóm
+    private void cleanupPendingRequests(String journeyId, String userId) {
+        List<JourneyRequest> pendingRequests = journeyRequestRepository.findAllByJourneyIdAndStatus(journeyId, RequestStatus.PENDING);
+        for (JourneyRequest req : pendingRequests) {
+            if (req.getUser().getId().equals(userId)) {
+                req.setStatus(RequestStatus.ACCEPTED); // Đánh dấu là đã xử lý
+                journeyRequestRepository.save(req);
+            }
+        }
     }
 }

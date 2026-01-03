@@ -6,6 +6,6 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 public interface JourneyRecapService {
-    // [FIX] UUID -> Long
-    Page<CheckinResponse> getUserRecapFeed(Long journeyId, User currentUser, Pageable pageable);
+    // [UUID] String journeyId
+    Page<CheckinResponse> getUserRecapFeed(String journeyId, User currentUser, Pageable pageable);
 }

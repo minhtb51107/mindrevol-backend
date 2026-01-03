@@ -18,10 +18,10 @@ public interface FriendshipMapper {
     @Mapping(target = "friend", source = "friendship", qualifiedByName = "mapFriend")
     @Mapping(target = "isRequester", source = "friendship", qualifiedByName = "checkRequester")
     @Mapping(target = "createdAt", source = "createdAt")
-    FriendshipResponse toResponse(Friendship friendship, @Context Long currentUserId);
+    FriendshipResponse toResponse(Friendship friendship, @Context String currentUserId); // [UUID]
 
     @Named("mapFriend")
-    default UserSummaryResponse mapFriend(Friendship f, @Context Long currentUserId) {
+    default UserSummaryResponse mapFriend(Friendship f, @Context String currentUserId) { // [UUID]
         User friend = f.getRequester().getId().equals(currentUserId) ? f.getAddressee() : f.getRequester();
         return UserSummaryResponse.builder()
                 .id(friend.getId())
@@ -32,11 +32,10 @@ public interface FriendshipMapper {
     }
 
     @Named("checkRequester")
-    default boolean checkRequester(Friendship f, @Context Long currentUserId) {
+    default boolean checkRequester(Friendship f, @Context String currentUserId) { // [UUID]
         return f.getRequester().getId().equals(currentUserId);
     }
 
-    // --- THÊM HÀM NÀY ĐỂ FIX LỖI ---
     default LocalDateTime map(OffsetDateTime value) {
         return value != null ? value.toLocalDateTime() : null;
     }

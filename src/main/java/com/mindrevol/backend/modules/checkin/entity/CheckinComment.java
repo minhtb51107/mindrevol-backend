@@ -12,10 +12,8 @@ import lombok.experimental.SuperBuilder;
 @Setter
 @NoArgsConstructor
 @AllArgsConstructor
-@SuperBuilder // [FIX] Dùng SuperBuilder
+@SuperBuilder
 public class CheckinComment extends BaseEntity {
-
-    // [ĐÃ XÓA] @Id UUID id
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "checkin_id", nullable = false)
@@ -27,6 +25,4 @@ public class CheckinComment extends BaseEntity {
 
     @Column(columnDefinition = "TEXT", nullable = false)
     private String content;
-    
-    // BaseEntity đã lo createdAt
 }

@@ -8,7 +8,7 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class NotificationResponse {
-    private Long id;
+    private String id; // [UUID] String
     private String title;
     private String message;
     private NotificationType type;
@@ -17,7 +17,7 @@ public class NotificationResponse {
     private boolean isRead;
     private LocalDateTime createdAt;
     
-    // Thông tin rút gọn người gửi (để hiển thị avatar/tên nếu cần)
-    private Long senderId;
+    // [UUID] Sender ID là String
+    private String senderId;
     private String senderName;
 }

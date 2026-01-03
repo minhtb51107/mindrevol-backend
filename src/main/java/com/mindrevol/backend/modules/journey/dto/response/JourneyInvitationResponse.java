@@ -8,8 +8,8 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class JourneyInvitationResponse {
-    private Long id;
-    private Long journeyId; // [FIX] Đổi UUID -> Long
+    private String id;        // [UUID] String
+    private String journeyId; // [UUID] String
     private String journeyName;
     private String inviterName;
     private String inviterAvatar;

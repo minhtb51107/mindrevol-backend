@@ -36,7 +36,7 @@ public class VerificationServiceImpl implements VerificationService {
 
     @Override
     @Transactional
-    public void castVote(Long checkinId, User voter, boolean isApproved) {
+    public void castVote(String checkinId, User voter, boolean isApproved) { // [UUID] String
         Checkin checkin = checkinRepository.findById(checkinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Bài check-in không tồn tại"));
 
@@ -48,7 +48,6 @@ public class VerificationServiceImpl implements VerificationService {
             throw new BadRequestException("Không thể tự vote cho chính mình.");
         }
 
-        // [FIX] Dùng Long ID cho journey
         JourneyParticipant voterParticipant = participantRepository.findByJourneyIdAndUserId(checkin.getJourney().getId(), voter.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên nhóm này"));
 
@@ -69,7 +68,7 @@ public class VerificationServiceImpl implements VerificationService {
     }
 
     private void handleRejectVote(Checkin checkin, JourneyParticipant voterParticipant) {
-        Long journeyId = checkin.getJourney().getId();
+        String journeyId = checkin.getJourney().getId();
 
         long currentRejectCount = verificationRepository.countRejections(checkin.getId());
         long totalMembers = participantRepository.countByJourneyId(journeyId);
@@ -80,7 +79,6 @@ public class VerificationServiceImpl implements VerificationService {
         log.info("Checkin {} - Rejections: {}/{}. Total Members: {}", 
                 checkin.getId(), currentRejectCount, requiredVotes, totalMembers);
 
-        // [FIX] Chỉ còn role OWNER có quyền sinh sát (Bỏ ADMIN)
         boolean isOwner = (voterParticipant.getRole() == JourneyRole.OWNER);
 
         if (isOwner || currentRejectCount >= requiredVotes) {
@@ -94,7 +92,6 @@ public class VerificationServiceImpl implements VerificationService {
         checkin.setStatus(CheckinStatus.REJECTED);
         checkinRepository.save(checkin);
 
-        // Thu hồi điểm
         gamificationService.revokeGamification(checkin);
 
         notificationService.sendAndSaveNotification(
@@ -103,7 +100,7 @@ public class VerificationServiceImpl implements VerificationService {
                 NotificationType.SYSTEM,
                 "Bài check-in bị gỡ! 🚨",
                 "Cộng đồng đã báo cáo ảnh của bạn không hợp lệ.",
-                checkin.getId().toString(),
+                checkin.getId(),
                 null 
         );
     }

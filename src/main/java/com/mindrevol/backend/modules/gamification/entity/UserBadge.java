@@ -6,10 +6,12 @@ import jakarta.persistence.*;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-// [FIX] Đã xóa import java.util.UUID;
+import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "user_badges")
+@Table(name = "user_badges", uniqueConstraints = {
+    @UniqueConstraint(columnNames = {"user_id", "badge_id"})
+})
 @Getter
 @Setter
 @NoArgsConstructor
@@ -21,12 +23,10 @@ public class UserBadge extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
-    @ManyToOne(fetch = FetchType.EAGER)
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "badge_id", nullable = false)
     private Badge badge;
 
-    @Column(name = "journey_id")
-    private Long journeyId; 
-    
-    // createdAt có sẵn trong BaseEntity
+    @Column(name = "earned_at", nullable = false)
+    private LocalDateTime earnedAt;
 }

@@ -1,15 +1,17 @@
 package com.mindrevol.backend.common.event;
 
 import lombok.AllArgsConstructor;
-import lombok.Getter;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import java.time.LocalDateTime;
 
-@Getter
+@Data
+@NoArgsConstructor
 @AllArgsConstructor
 public class CheckinSuccessEvent {
-    // [FIX] Đổi UUID -> Long
-    private final Long checkinId;
-    private final Long userId;
-    private final Long journeyId;
-    private final LocalDateTime checkinTime;
+    // [FIX] Đổi toàn bộ Long -> String để khớp với UUID
+    private String checkinId;
+    private String userId;
+    private String journeyId;
+    private LocalDateTime checkinTime;
 }

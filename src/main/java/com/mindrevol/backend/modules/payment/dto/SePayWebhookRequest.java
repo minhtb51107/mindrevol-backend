@@ -5,10 +5,10 @@ import lombok.Data;
 
 @Data
 public class SePayWebhookRequest {
-    private long id; // ID giao dịch tại SePay
+    private long id; 
     
     @JsonProperty("gateway")
-    private String gateway; // Ngân hàng (MB, VCB...)
+    private String gateway; 
     
     @JsonProperty("transactionDate")
     private String transactionDate;
@@ -20,13 +20,13 @@ public class SePayWebhookRequest {
     private String subAccount;
     
     @JsonProperty("transferAmount")
-    private long transferAmount; // Số tiền vào (quan trọng)
+    private long transferAmount; 
     
     @JsonProperty("transferType")
-    private String transferType; // "in" hoặc "out"
+    private String transferType; 
     
     @JsonProperty("content")
-    private String content; // Nội dung CK (Ví dụ: MINDREVOL 105)
+    private String content; 
     
     @JsonProperty("code")
     private String code;

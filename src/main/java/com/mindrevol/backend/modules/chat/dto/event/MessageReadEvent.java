@@ -5,7 +5,7 @@ import lombok.Data;
 @Data
 @AllArgsConstructor
 public class MessageReadEvent {
-    private Long conversationId;
-    private Long lastReadMessageId;
-    private Long userIdWhoRead;
+    private String conversationId;    // [SỬA] Long -> String
+    private String lastReadMessageId; // [SỬA] Long -> String
+    private String userIdWhoRead;     // [SỬA] Long -> String
 }

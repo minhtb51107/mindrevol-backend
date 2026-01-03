@@ -1,11 +1,8 @@
 package com.mindrevol.backend.modules.user.entity;
 
+import com.mindrevol.backend.common.entity.BaseEntity;
 import jakarta.persistence.*;
 import lombok.*;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
-
-import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "user_blocks", uniqueConstraints = {
@@ -16,21 +13,15 @@ import java.time.LocalDateTime;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@EntityListeners(AuditingEntityListener.class)
-public class UserBlock {
+public class UserBlock extends BaseEntity {
 
-    @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    // [UUID] String ID từ BaseEntity
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "blocker_id", nullable = false)
-    private User blocker; // Người thực hiện chặn
+    private User blocker; 
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "blocked_id", nullable = false)
-    private User blocked; // Người bị chặn
-
-    @CreatedDate
-    private LocalDateTime createdAt;
+    private User blocked; 
 }

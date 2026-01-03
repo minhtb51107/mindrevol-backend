@@ -10,9 +10,9 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class NotificationDto {
-    private String type;    // SOS, COMEBACK, NEW_CHECKIN
+    private String type;    
     private String title;
     private String message;
     private String senderAvatar;
-    private Long senderId;
+    private String senderId; // [UUID] String
 }
