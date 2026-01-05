@@ -12,7 +12,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.authentication.dao.DaoAuthenticationProvider;
-import org.springframework.security.config.Customizer; // [MỚI] Import cái này
+import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -76,7 +76,7 @@ public class SecurityConfig {
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // 1. PUBLIC ENDPOINTS (Ai cũng vào được)
+                // 1. PUBLIC ENDPOINTS (Ai cũng vào được - KHÔNG CẦN LOGIN)
                 .requestMatchers(
                         "/api/v1/auth/**",
                         "/uploads/**",
@@ -86,14 +86,14 @@ public class SecurityConfig {
                         "/webjars/**",
                         "/ws/**",
                         "/api/v1/plans/{shareableLink}/public",
-                        "/actuator/health", // Health check nên để public cho Render check
-                        // "/actuator/prometheus", // [ĐÃ XÓA] Không để public nữa
-                        "/api/v1/payment/webhook" 
+                        "/actuator/health",
+                        "/api/v1/payment/webhook",
+                        
+                        // [THAY ĐỔI TẠI ĐÂY] Cho phép Prometheus truy cập tự do để lấy metrics
+                        "/actuator/prometheus"
                 ).permitAll()
 
-                // 2. MONITORING ENDPOINT (Bảo mật)
-                // Chỉ cho phép user có quyền ADMIN truy cập endpoint lấy số liệu
-                .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
+                // [ĐÃ XÓA] Dòng yêu cầu ADMIN cũ: .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
 
                 // 3. SECURED API ENDPOINTS
                 .requestMatchers("/api/v1/**").authenticated()
@@ -101,7 +101,6 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/v1/files/upload").authenticated()
                 .anyRequest().authenticated()
             )
-            // [QUAN TRỌNG] Bật HTTP Basic Auth để Prometheus Scraper có thể đăng nhập
             .httpBasic(Customizer.withDefaults());
 
         http.authenticationProvider(authenticationProvider());
