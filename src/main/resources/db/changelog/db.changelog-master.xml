@@ -12,7 +12,14 @@
     
     <include file="patches/007-fix-invitation-constraint.xml" relativeToChangelogFile="true"/>
     <include file="patches/008-add-journey-active-days.xml" relativeToChangelogFile="true"/>
-    
+    <include file="patches/009-add-checkin-context.xml" relativeToChangelogFile="true"/>
     <include file="patches/010-add-checkin-context.xml" relativeToChangelogFile="true"/>
+    <include file="patches/011-drop-legacy-features.xml" relativeToChangelogFile="true"/>
+    <include file="patches/012-add-subscription-fields.xml" relativeToChangelogFile="true"/>
+    <include file="patches/013-add-image-file-id.xml" relativeToChangelogFile="true"/>
+    <include file="patches/014-add-video-support.xml" relativeToChangelogFile="true"/>
+    <include file="patches/015-remove-verification.xml" relativeToChangelogFile="true"/>
+    <include file="patches/016-add-internal-ads.xml" relativeToChangelogFile="true"/>
+    <include file="patches/017-add-tags-to-ads.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

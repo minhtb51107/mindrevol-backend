@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="013-add-image-file-id" author="mindrevol">
+        <addColumn tableName="checkins">
+            <column name="image_file_id" type="VARCHAR(100)" 
+                    remarks="Lưu ID file trên ImageKit để xóa sau này">
+            </column>
+        </addColumn>
+    </changeSet>
+</databaseChangeLog>

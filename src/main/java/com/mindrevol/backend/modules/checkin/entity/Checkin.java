@@ -42,10 +42,14 @@ public class Checkin extends BaseEntity {
     @Column(name = "image_url")
     private String imageUrl;
 
+    // [THÊM MỚI] Lưu ID của file trên ImageKit để phục vụ xóa
+    @Column(name = "image_file_id")
+    private String imageFileId;
+
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
 
-    // --- CÁC TRƯỜNG CONTEXT/PLATFORM MỚI ---
+    // --- CÁC TRƯỜNG CONTEXT/PLATFORM (GIỮ NGUYÊN) ---
 
     @Column(length = 50) 
     private String emotion; // Ví dụ: "🔥", "🌿", "CHILL"
@@ -55,20 +59,25 @@ public class Checkin extends BaseEntity {
     @Builder.Default
     private ActivityType activityType = ActivityType.DEFAULT;
 
-    // Tên hiển thị của ngữ cảnh (VD: "Đang học", "Cà phê sáng")
     @Column(name = "activity_name")
     private String activityName; 
 
-    // Địa điểm
     @Column(name = "location_name")
     private String locationName;
 
-    // Tags phụ (Lưu user IDs hoặc string tags)
     @ElementCollection
     @CollectionTable(name = "checkin_tags", joinColumns = @JoinColumn(name = "checkin_id"))
     @Column(name = "tag")
     @Builder.Default
     private List<String> tags = new ArrayList<>();
+    
+    @Enumerated(EnumType.STRING)
+    @Column(name = "media_type", nullable = false)
+    @Builder.Default
+    private MediaType mediaType = MediaType.IMAGE;
+
+    @Column(name = "video_url")
+    private String videoUrl;
 
     // ----------------------------------------
 

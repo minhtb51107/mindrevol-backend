@@ -21,35 +21,40 @@ public class JourneyCleanupJob {
     private final RedissonClient redissonClient;
 
     /**
-     * Chạy mỗi ngày vào lúc 00:01 sáng.
-     * Nhiệm vụ: Đóng các hành trình đã hết hạn (endDate < hôm nay).
+     * PRODUCTION CONFIG:
+     * Chạy 1 lần mỗi ngày vào lúc 00:01:00 (1 phút sau nửa đêm).
+     * Lý do: Để đảm bảo LocalDate.now() đã chắc chắn chuyển sang ngày mới.
+     * Cron: "Giây Phút Giờ Ngày Tháng Thứ"
      */
-    @Scheduled(cron = "0 * * * * ?") // Chạy mỗi phút
+    @Scheduled(cron = "0 1 0 * * ?") 
     @Transactional
     public void closeExpiredJourneys() {
-        // Dùng Redisson Lock để tránh chạy trùng nếu deploy nhiều server (như DailyStreakResetJob)
         String lockKey = "job:daily_journey_cleanup";
         RLock lock = redissonClient.getLock(lockKey);
 
         try {
-            // Thử lấy lock, chờ 0s, giữ lock trong 5 phút
-            if (lock.tryLock(0, 5, TimeUnit.MINUTES)) {
-                log.info("Starting Daily Journey Cleanup Job...");
+            // Thử lấy lock, không chờ (0), giữ lock trong 30 phút (đề phòng job chạy lâu)
+            if (lock.tryLock(0, 30, TimeUnit.MINUTES)) {
+                log.info("⏰ Starting Daily Journey Cleanup Job (Midnight Scan)...");
 
                 LocalDate today = LocalDate.now();
+                
+                // Batch update: Cực nhanh và nhẹ
                 int updatedCount = journeyRepository.updateExpiredJourneysStatus(today);
 
                 if (updatedCount > 0) {
-                    log.info("Completed cleaning up: {} journeys marked as COMPLETED.", updatedCount);
+                    log.info("✅ Cleanup complete: Closed {} expired journeys.", updatedCount);
                 } else {
-                    log.info("No expired journeys found today.");
+                    log.info("💤 No expired journeys found today.");
                 }
+            } else {
+                log.info("Job execution skipped (Locked by another instance).");
             }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
-            log.error("Lock interrupted during journey cleanup", e);
+            log.error("Job interrupted", e);
         } finally {
-            if (lock.isHeldByCurrentThread()) {
+            if (lock != null && lock.isHeldByCurrentThread()) {
                 lock.unlock();
             }
         }

@@ -1,121 +1,207 @@
 package com.mindrevol.backend.modules.feed.service.impl;
 
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindrevol.backend.common.exception.ResourceNotFoundException;
+import com.mindrevol.backend.modules.advertising.entity.SystemAd;
+import com.mindrevol.backend.modules.advertising.repository.SystemAdRepository;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
+import com.mindrevol.backend.modules.feed.dto.AdFeedItemResponse;
+import com.mindrevol.backend.modules.feed.dto.FeedItemResponse;
+import com.mindrevol.backend.modules.feed.dto.FeedItemType;
 import com.mindrevol.backend.modules.feed.service.FeedService;
-import com.mindrevol.backend.modules.user.repository.UserBlockRepository; // [THÊM]
+import com.mindrevol.backend.modules.user.entity.User;
+import com.mindrevol.backend.modules.user.repository.UserBlockRepository;
+import com.mindrevol.backend.modules.user.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.PageRequest; // [THÊM]
-import org.springframework.data.domain.Pageable; // [THÊM]
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
-import java.time.LocalDateTime; // [THÊM]
+import java.time.LocalDateTime;
 import java.util.*;
+import java.util.concurrent.ThreadLocalRandom;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
-@Slf4j // [THÊM] Để log lỗi nếu cần
+@Slf4j
 public class FeedServiceImpl implements FeedService {
 
-    private final RedisTemplate<String, String> redisTemplate;
+    private final RedisTemplate<String, Object> redisTemplate;
     private final CheckinRepository checkinRepository;
     private final CheckinMapper checkinMapper;
-    private final UserBlockRepository userBlockRepository; // [THÊM] Inject thêm cái này để lọc user bị chặn
+    private final UserBlockRepository userBlockRepository;
+    private final UserRepository userRepository; // Cần cái này để check user Gold
+    private final SystemAdRepository systemAdRepository; // Repo quảng cáo
+    private final ObjectMapper objectMapper;
 
-    private static final String FEED_KEY_PREFIX = "user:feed:";
-    private static final long FEED_TTL_DAYS = 7; 
+    private static final String FEED_CACHE_PREFIX = "feed:unified:";
+    private static final long CACHE_TTL_MINUTES = 5;
 
-    @Override
-    public void pushToFeed(String userId, String checkinId) { 
-        String key = FEED_KEY_PREFIX + userId;
-        try {
-            // Push String ID vào list
-            redisTemplate.opsForList().leftPush(key, checkinId);
-            redisTemplate.opsForList().trim(key, 0, 199);
-            redisTemplate.expire(key, FEED_TTL_DAYS, TimeUnit.DAYS);
-        } catch (Exception e) {
-            log.error("Lỗi khi push Redis feed cho user {}: {}", userId, e.getMessage());
-        }
-    }
+    // Cấu hình vị trí quảng cáo
+    private static final int SLOT_INTERNAL_GOLD = 5;
+    private static final int SLOT_AFFILIATE = 10;
 
     @Override
-    public List<CheckinResponse> getNewsFeed(String userId, int offset, int limit) {
-        String key = FEED_KEY_PREFIX + userId;
-        List<CheckinResponse> result = new ArrayList<>();
+    public List<FeedItemResponse> getNewsFeed(String userId, int offset, int limit) {
+        User currentUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // --- BƯỚC 1: LẤY LIST BÀI POST (Core Content) ---
+        // Phần này giữ nguyên logic Cache của bạn
+        List<CheckinResponse> posts = getCachedPosts(userId, offset, limit);
+
+        // --- BƯỚC 2: XỬ LÝ QUẢNG CÁO (Ad Injection) ---
         
-        // 1. Cố gắng lấy từ Redis trước
-        List<String> checkinIds = null;
-        try {
-            checkinIds = redisTemplate.opsForList().range(key, offset, offset + limit - 1);
-        } catch (Exception e) {
-            log.warn("Redis feed error, falling back to DB: {}", e.getMessage());
+        // Convert List<CheckinResponse> sang List<FeedItemResponse> (Upcasting)
+        List<FeedItemResponse> finalFeed = new ArrayList<>(posts);
+
+        // Nếu là GOLD -> Trả về Feed sạch (Không quảng cáo)
+        if (currentUser.isPremium()) {
+            return finalFeed;
         }
 
-        // 2. [LOGIC MỚI] Nếu Redis có dữ liệu -> Query DB theo ID
-        if (checkinIds != null && !checkinIds.isEmpty()) {
-            List<Checkin> checkins = checkinRepository.findAllById(checkinIds);
-            Map<String, Checkin> checkinMap = checkins.stream()
-                    .collect(Collectors.toMap(Checkin::getId, c -> c));
-
-            for (String id : checkinIds) {
-                Checkin c = checkinMap.get(id);
-                if (c != null) {
-                    result.add(checkinMapper.toResponse(c));
-                }
-            }
-            // Nếu tìm được dữ liệu từ Redis, trả về luôn
-            if (!result.isEmpty()) {
-                return result;
-            }
+        // Nếu là FREE -> Trộn quảng cáo vào
+        if (!posts.isEmpty()) {
+            // Cần lấy entity gốc để check Tags cho thuật toán Affiliate
+            // Tuy nhiên vì ta đang dùng Cache DTO nên không có entity gốc ở đây.
+            // Để tối ưu, ta sẽ chỉ match ngữ cảnh dựa trên text (caption, tags) có trong DTO
+            return injectContextualAds(finalFeed, offset, limit);
         }
 
-        // 3. [FALLBACK] Nếu Redis rỗng (hoặc query ID không ra), lấy trực tiếp từ DB
-        // Đây là phần sửa quan trọng để bạn thấy bài đăng khi mới chạy app
-        log.info("Feed Cache miss or empty for user {}. Fetching from Database...", userId);
-        return getFallbackFeedFromDb(userId, offset, limit);
+        return finalFeed;
     }
 
-    // [THÊM] Hàm hỗ trợ lấy từ DB giống như logic bên CheckinService
-    private List<CheckinResponse> getFallbackFeedFromDb(String userId, int offset, int limit) {
-        // Lấy danh sách user bị chặn để lọc
+    /**
+     * Logic lấy bài viết (Có Redis Cache)
+     */
+    private List<CheckinResponse> getCachedPosts(String userId, int offset, int limit) {
+        int page = (limit > 0) ? (offset / limit) : 0;
+        String cacheKey = FEED_CACHE_PREFIX + userId + ":" + page;
+
+        // 1. Check Redis
+        try {
+            Object cachedData = redisTemplate.opsForValue().get(cacheKey);
+            if (cachedData != null) {
+                return objectMapper.convertValue(cachedData, new TypeReference<List<CheckinResponse>>() {});
+            }
+        } catch (Exception e) {
+            log.error("Redis read error: {}", e.getMessage());
+        }
+
+        // 2. Redis Miss -> Query DB
         Set<String> blockedIds = userBlockRepository.findAllBlockedUserIdsInteraction(userId);
         if (blockedIds == null) blockedIds = new HashSet<>();
-        blockedIds.removeIf(Objects::isNull);
-        blockedIds.add("00000000-0000-0000-0000-000000000000"); // Tránh lỗi SQL IN empty
+        blockedIds.add("00000000-0000-0000-0000-000000000000");
 
-        // Tính toán phân trang
-        int page = offset / limit;
         Pageable pageable = PageRequest.of(page, limit);
+        // Lưu ý: cursor nên được truyền từ client thay vì new, nhưng tạm thời dùng logic của bạn
+        LocalDateTime cursor = LocalDateTime.now().plusSeconds(10); 
+
+        List<Checkin> dbCheckins = checkinRepository.findUnifiedFeed(userId, cursor, blockedIds, pageable);
+        List<CheckinResponse> responseList = dbCheckins.stream().map(checkinMapper::toResponse).collect(Collectors.toList());
+
+        // 3. Save Redis
+        try {
+            if (!responseList.isEmpty()) {
+                redisTemplate.opsForValue().set(cacheKey, responseList, CACHE_TTL_MINUTES, TimeUnit.MINUTES);
+            }
+        } catch (Exception e) {
+            log.error("Redis write error: {}", e.getMessage());
+        }
+
+        return responseList;
+    }
+
+    /**
+     * Thuật toán chèn quảng cáo
+     */
+    private List<FeedItemResponse> injectContextualAds(List<FeedItemResponse> posts, int offset, int limit) {
+        List<SystemAd> internalAds = systemAdRepository.findByTypeAndIsActiveTrue(FeedItemType.INTERNAL_AD);
+        List<SystemAd> affiliateAds = systemAdRepository.findAllActiveAffiliateAds();
+
+        List<FeedItemResponse> mixedFeed = new ArrayList<>();
+        int globalIndex = offset; // Bắt đầu đếm từ offset hiện tại
+
+        for (FeedItemResponse item : posts) {
+            mixedFeed.add(item);
+            globalIndex++;
+
+            // Chỉ xử lý nếu item hiện tại là POST (để lấy tag soi ngữ cảnh)
+            CheckinResponse postData = (item instanceof CheckinResponse) ? (CheckinResponse) item : null;
+
+            // --- SLOT 5: INTERNAL AD ---
+            if (globalIndex % SLOT_INTERNAL_GOLD == 0 && globalIndex % SLOT_AFFILIATE != 0) {
+                if (!internalAds.isEmpty()) {
+                    SystemAd ad = internalAds.get(ThreadLocalRandom.current().nextInt(internalAds.size()));
+                    mixedFeed.add(mapAdToResponse(ad));
+                }
+            }
+
+            // --- SLOT 10: AFFILIATE AD ---
+            if (globalIndex % SLOT_AFFILIATE == 0 && postData != null) {
+                // Lấy tags từ DTO cache
+                List<String> postTags = postData.getTags(); 
+                SystemAd matchedAd = findMatchingAffiliate(postTags, affiliateAds);
+                
+                if (matchedAd != null) {
+                    mixedFeed.add(mapAdToResponse(matchedAd));
+                }
+            }
+        }
+        return mixedFeed;
+    }
+
+    private SystemAd findMatchingAffiliate(List<String> postTags, List<SystemAd> ads) {
+        if (postTags == null || postTags.isEmpty() || ads.isEmpty()) return null;
         
-        // Dùng thời gian tương lai để lấy tất cả bài mới nhất
-        LocalDateTime cursor = LocalDateTime.now().plusDays(1); 
+        List<SystemAd> shuffledAds = new ArrayList<>(ads);
+        Collections.shuffle(shuffledAds);
 
-        // Gọi Repository (đã có sẵn hàm này trong CheckinRepository bạn upload)
-        List<Checkin> dbCheckins = checkinRepository.findUnifiedFeed(
-            userId, 
-            cursor, 
-            blockedIds, 
-            pageable
-        );
+        for (SystemAd ad : shuffledAds) {
+            if (ad.getTargetTags() == null) continue;
+            String[] adTags = ad.getTargetTags().split(",");
+            
+            for (String postTag : postTags) {
+                for (String adTag : adTags) {
+                    if (postTag.trim().equalsIgnoreCase(adTag.trim())) {
+                        return ad;
+                    }
+                }
+            }
+        }
+        return null;
+    }
 
-        return dbCheckins.stream()
-                .map(checkinMapper::toResponse)
-                .collect(Collectors.toList());
+    private AdFeedItemResponse mapAdToResponse(SystemAd ad) {
+        return AdFeedItemResponse.builder()
+                .type(ad.getType())
+                .id(ad.getId())
+                .adProvider("MINDREVOL")
+                .title(ad.getTitle())
+                .imageUrl(ad.getImageUrl())
+                .ctaLink(ad.getCtaLink())
+                .ctaText(ad.getCtaText())
+                .build();
     }
 
     @Override
-    public void removeFromFeed(String userId, String checkinId) {
-        String key = FEED_KEY_PREFIX + userId;
+    public void evictFeedCache(String userId) {
         try {
-            redisTemplate.opsForList().remove(key, 0, checkinId);
+            String pattern = FEED_CACHE_PREFIX + userId + ":*";
+            Set<String> keys = redisTemplate.keys(pattern);
+            if (keys != null && !keys.isEmpty()) {
+                redisTemplate.delete(keys);
+            }
         } catch (Exception e) {
-            log.error("Error removing from feed: {}", e.getMessage());
+            log.error("Error evicting cache: {}", e.getMessage());
         }
     }
 }

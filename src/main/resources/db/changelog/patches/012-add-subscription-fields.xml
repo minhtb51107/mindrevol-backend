@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="012-add-user-subscription-columns" author="mindrevol">
+        <addColumn tableName="users">
+            <column name="account_type" type="VARCHAR(20)" defaultValue="FREE">
+                <constraints nullable="false"/>
+            </column>
+            <column name="subscription_expiry_date" type="DATETIME"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

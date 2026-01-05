@@ -7,14 +7,11 @@ import com.mindrevol.backend.modules.auth.entity.SocialAccount;
 import com.mindrevol.backend.modules.auth.repository.SocialAccountRepository;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
-import com.mindrevol.backend.modules.gamification.repository.UserBadgeRepository;
-import com.mindrevol.backend.modules.habit.mapper.HabitMapper;
-import com.mindrevol.backend.modules.habit.repository.HabitRepository;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.mapper.JourneyMapper;
 import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
-import com.mindrevol.backend.modules.storage.service.FileStorageService; // Import Service Upload
+import com.mindrevol.backend.modules.storage.service.FileStorageService;
 import com.mindrevol.backend.modules.user.dto.request.UpdateNotificationSettingsRequest;
 import com.mindrevol.backend.modules.user.dto.request.UpdateProfileRequest;
 import com.mindrevol.backend.modules.user.dto.response.LinkedAccountResponse;
@@ -36,7 +33,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile; // Import này
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Optional;
@@ -53,15 +50,12 @@ public class UserServiceImpl implements UserService {
     private final SanitizationService sanitizationService;
     private final CheckinRepository checkinRepository;
     private final CheckinMapper checkinMapper;
-    private final HabitRepository habitRepository;
-    private final HabitMapper habitMapper;
     private final FriendshipRepository friendshipRepository;
     private final FriendshipMapper friendshipMapper;
-    private final UserBadgeRepository userBadgeRepository;
     private final JourneyRepository journeyRepository;
     private final JourneyMapper journeyMapper;
     private final UserBlockRepository userBlockRepository;
-    private final FileStorageService fileStorageService; // Inject Service Upload
+    private final FileStorageService fileStorageService;
     
     private final UserSettingsRepository userSettingsRepository;
     private final SocialAccountRepository socialAccountRepository;
@@ -94,7 +88,6 @@ public class UserServiceImpl implements UserService {
         return buildUserProfile(targetUser, currentUser);
     }
 
-    // [CẬP NHẬT LOGIC UPLOAD ẢNH]
     @Override
     @Transactional
     public UserProfileResponse updateProfile(String currentEmail, UpdateProfileRequest request, MultipartFile file) {
@@ -103,9 +96,14 @@ public class UserServiceImpl implements UserService {
         // 1. Nếu có file ảnh gửi lên thì upload
         if (file != null && !file.isEmpty()) {
             try {
-                // Upload vào folder avatars/{userId}
-                String avatarUrl = fileStorageService.uploadFile(file, "avatars/" + user.getId());
-                user.setAvatarUrl(avatarUrl);
+                // [FIX] Sử dụng DTO FileUploadResult trả về từ service
+                FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, "avatars/" + user.getId());
+                
+                // Lấy URL từ kết quả upload
+                user.setAvatarUrl(uploadResult.getUrl());
+                
+                // (Optional) Nếu sau này User có trường avatarFileId thì set ở đây:
+                // user.setAvatarFileId(uploadResult.getFileId());
             } catch (Exception e) {
                 log.error("Failed to upload avatar", e);
                 throw new BadRequestException("Lỗi khi tải lên ảnh đại diện: " + e.getMessage());
@@ -154,6 +152,7 @@ public class UserServiceImpl implements UserService {
     public void deleteMyAccount(String userId) { 
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         long timestamp = System.currentTimeMillis();
+        // Soft delete bằng cách đổi info tránh trùng lặp sau này
         user.setEmail(user.getEmail() + "_deleted_" + timestamp);
         user.setHandle(user.getHandle() + "_deleted_" + timestamp);
         userRepository.save(user);
@@ -168,9 +167,7 @@ public class UserServiceImpl implements UserService {
     public UserDataExport exportMyData(String userId) { 
         User user = getUserById(userId);
 
-        var habits = habitRepository.findByUserIdAndArchivedFalse(userId).stream()
-                .map(habitMapper::toResponse).collect(Collectors.toList());
-
+        // Chỉ export Checkin và Friend, bỏ Habit/Badge
         var checkins = checkinRepository.findAllByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(checkinMapper::toResponse).collect(Collectors.toList());
 
@@ -178,15 +175,10 @@ public class UserServiceImpl implements UserService {
                 .map(f -> friendshipMapper.toResponse(f, userId)) 
                 .collect(Collectors.toList());
 
-        var badges = userBadgeRepository.findByUserIdOrderByCreatedAtDesc(userId).stream()
-                .map(ub -> ub.getBadge().getName()).collect(Collectors.toList());
-
         return UserDataExport.builder()
                 .profile(buildUserProfile(user, user))
-                .habits(habits)
                 .checkins(checkins)
                 .friends(friends)
-                .badges(badges)
                 .build();
     }
 

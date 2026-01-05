@@ -51,16 +51,20 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
         JourneyParticipant inviterParticipant = participantRepository.findByJourneyIdAndUserId(journeyId, inviter.getId())
                 .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên của hành trình này"));
 
-        // [LOGIC MỚI] Kiểm tra quyền mời dựa trên Visibility
+        // 2. Kiểm tra quyền mời (Private thì chỉ Owner được mời)
         if (journey.getVisibility() == JourneyVisibility.PRIVATE) {
             if (inviterParticipant.getRole() != JourneyRole.OWNER) {
                 throw new BadRequestException("Hành trình riêng tư: Chỉ chủ phòng mới được mời thành viên.");
             }
         }
 
+        // 3. [LOGIC MỚI] Kiểm tra giới hạn thành viên (Dựa trên gói của CREATOR)
+        User owner = journey.getCreator();
+        int limit = owner.isPremium() ? AppConstants.MAX_PARTICIPANTS_GOLD : AppConstants.MAX_PARTICIPANTS_FREE;
+        
         long currentMembers = participantRepository.countByJourneyId(journeyId);
-        if (currentMembers >= AppConstants.LIMIT_MEMBERS_PER_JOURNEY_FREE) {
-            throw new BadRequestException("Hành trình đã đạt giới hạn thành viên.");
+        if (currentMembers >= limit) {
+            throw new BadRequestException("Hành trình đã đạt giới hạn thành viên (" + limit + " người). Chủ phòng cần nâng cấp Gold để mở rộng.");
         }
 
         User friend = userRepository.findById(friendId)
@@ -107,22 +111,24 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
 
         Journey journey = invitation.getJourney();
 
+        // [LOGIC MỚI] Check lại giới hạn (Race condition protection)
+        User owner = journey.getCreator();
+        int limit = owner.isPremium() ? AppConstants.MAX_PARTICIPANTS_GOLD : AppConstants.MAX_PARTICIPANTS_FREE;
+        
         long currentMembers = participantRepository.countByJourneyId(journey.getId());
-        if (currentMembers >= AppConstants.LIMIT_MEMBERS_PER_JOURNEY_FREE) {
-             throw new BadRequestException("Rất tiếc, hành trình này vừa đủ người rồi.");
+        if (currentMembers >= limit) {
+             throw new BadRequestException("Rất tiếc, hành trình này vừa đủ người rồi (" + limit + " thành viên).");
         }
 
-        // [LOGIC MỚI] Nếu đã là thành viên -> Chỉ cần dọn dẹp và update trạng thái mời
+        // Nếu đã là thành viên -> Dọn dẹp
         if (participantRepository.existsByJourneyIdAndUserId(journey.getId(), currentUser.getId())) {
             invitation.setStatus(JourneyInvitationStatus.ACCEPTED);
             invitationRepository.save(invitation);
-            cleanupPendingRequests(journey.getId(), currentUser.getId()); // Dọn rác
+            cleanupPendingRequests(journey.getId(), currentUser.getId());
             return;
         }
 
-        // [LOGIC MỚI] Luôn vào thẳng (Vì logic inviteFriendToJourney đã chặn người không có quyền mời rồi)
-        // Nghĩa là: Nếu lời mời này tồn tại, nó hợp lệ để vào thẳng.
-        
+        // Vào nhóm
         JourneyParticipant participant = JourneyParticipant.builder()
                 .journey(journey) 
                 .user(currentUser)
@@ -134,14 +140,10 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
         
         participantRepository.save(participant);
 
-        // Update trạng thái lời mời
         invitation.setStatus(JourneyInvitationStatus.ACCEPTED);
         invitationRepository.save(invitation);
 
-        // [QUAN TRỌNG] Hủy/Xóa các request xin vào đang treo để Owner không phải duyệt nữa
         cleanupPendingRequests(journey.getId(), currentUser.getId());
-
-        // Bắn event
         eventPublisher.publishEvent(new JourneyJoinedEvent(journey, currentUser));
         
         log.info("User {} joined Journey {} directly via invitation", currentUser.getId(), journey.getId());
@@ -167,12 +169,11 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
                 .map(journeyMapper::toInvitationResponse);
     }
 
-    // [HÀM MỚI] Dọn dẹp request thừa sau khi đã vào nhóm
     private void cleanupPendingRequests(String journeyId, String userId) {
         List<JourneyRequest> pendingRequests = journeyRequestRepository.findAllByJourneyIdAndStatus(journeyId, RequestStatus.PENDING);
         for (JourneyRequest req : pendingRequests) {
             if (req.getUser().getId().equals(userId)) {
-                req.setStatus(RequestStatus.ACCEPTED); // Đánh dấu là đã xử lý
+                req.setStatus(RequestStatus.ACCEPTED); 
                 journeyRequestRepository.save(req);
             }
         }

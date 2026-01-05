@@ -1,5 +1,6 @@
 package com.mindrevol.backend.modules.journey.service.impl;
 
+import com.mindrevol.backend.common.constant.AppConstants;
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
@@ -25,6 +26,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -35,8 +38,6 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
 
 @Service
 @RequiredArgsConstructor
@@ -54,9 +55,9 @@ public class JourneyServiceImpl implements JourneyService {
     private final CheckinRepository checkinRepository;
     private final CheckinMapper checkinMapper;
 
-    // --- 1. LẤY HÀNH TRÌNH ĐANG CHẠY (ACTIVE) ---
+    // --- 1. LẤY HÀNH TRÌNH ACTIVE (READ-ONLY) ---
     @Override
-    @Transactional 
+    @Transactional(readOnly = true) // [TỐI ƯU] Transaction chỉ đọc
     public List<UserActiveJourneyResponse> getUserActiveJourneys(String userId) {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("User not found");
@@ -69,14 +70,14 @@ public class JourneyServiceImpl implements JourneyService {
         for (JourneyParticipant p : participants) {
             Journey j = p.getJourney();
             
-            // Lazy Update: Nếu quá hạn -> Đóng ngay
+            // [FIX ANTI-PATTERN] Chỉ kiểm tra logic để hiển thị, KHÔNG GHI DB (Save) tại đây.
+            // Việc update status DB đã có JourneyCleanupJob lo vào cuối ngày.
             if (j.getStatus() == JourneyStatus.ONGOING && 
                 j.getEndDate() != null && 
                 j.getEndDate().isBefore(today)) {
                 
-                log.info("Lazy update (Active List): Journey {} expired. Switching to COMPLETED.", j.getId());
-                j.setStatus(JourneyStatus.COMPLETED);
-                journeyRepository.save(j);
+                // Nếu hành trình đã hết hạn nhưng Job chưa chạy, ta chỉ cần ẩn nó khỏi danh sách Active
+                // chứ không thực hiện transaction update ở đây để tránh side-effect.
                 continue; 
             }
             validParticipants.add(p);
@@ -85,9 +86,9 @@ public class JourneyServiceImpl implements JourneyService {
         return mapToUserJourneyResponse(validParticipants, userId);
     }
 
-    // --- 2. LẤY HÀNH TRÌNH ĐÃ KẾT THÚC (FINISHED) ---
+    // --- 2. LẤY HÀNH TRÌNH FINISHED (READ-ONLY) ---
     @Override
-    @Transactional 
+    @Transactional(readOnly = true)
     public List<UserActiveJourneyResponse> getUserFinishedJourneys(String userId) {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("User not found");
@@ -103,14 +104,11 @@ public class JourneyServiceImpl implements JourneyService {
             if (j.getStatus() == JourneyStatus.COMPLETED) {
                 finishedParticipants.add(p);
             } 
+            // [FIX] Hiển thị cả những cái đã quá hạn mà Job chưa kịp quét thành COMPLETED
             else if (j.getStatus() == JourneyStatus.ONGOING && 
                      j.getEndDate() != null && 
                      j.getEndDate().isBefore(today)) {
-                
-                log.info("Lazy update (Finished List): Journey {} expired. Switching to COMPLETED.", j.getId());
-                j.setStatus(JourneyStatus.COMPLETED);
-                journeyRepository.save(j);
-                
+                // Coi như nó đã xong để hiển thị đúng tab
                 finishedParticipants.add(p);
             }
         }
@@ -118,7 +116,6 @@ public class JourneyServiceImpl implements JourneyService {
         return mapToUserJourneyResponse(finishedParticipants, userId);
     }
 
-    // [CẬP NHẬT] Map thêm endDate
     private List<UserActiveJourneyResponse> mapToUserJourneyResponse(List<JourneyParticipant> participants, String userId) {
         return participants.stream().map(participant -> {
             Journey journey = participant.getJourney();
@@ -147,7 +144,7 @@ public class JourneyServiceImpl implements JourneyService {
                     .status(journey.getStatus().name())
                     .visibility(journey.getVisibility().name())
                     .startDate(journey.getStartDate())
-                    .endDate(journey.getEndDate()) // [MỚI] Thêm dòng này
+                    .endDate(journey.getEndDate())
                     .totalCheckins(participant.getTotalCheckins())
                     .checkins(checkinResponses)
                     .hasNewUpdates(hasNewUpdates)
@@ -155,8 +152,6 @@ public class JourneyServiceImpl implements JourneyService {
         }).collect(Collectors.toList());
     }
 
-    // --- CÁC HÀM KHÁC GIỮ NGUYÊN ---
-    
     @Override
     @Transactional(readOnly = true)
     public JourneyAlertResponse getJourneyAlerts(String userId) {
@@ -189,6 +184,7 @@ public class JourneyServiceImpl implements JourneyService {
         return userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
+    // Helper này chỉ dùng khi có tác động ghi (Join/Detail), không dùng trong List GET
     private void checkAndCompleteExpiredJourney(Journey journey) {
         if (journey.getStatus() == JourneyStatus.ONGOING && 
             journey.getEndDate() != null && 
@@ -203,6 +199,13 @@ public class JourneyServiceImpl implements JourneyService {
     @Transactional
     public JourneyResponse createJourney(CreateJourneyRequest request, String userId) {
         User currentUser = getUserEntity(userId);
+        long activeCount = participantRepository.countActiveByUserId(userId); 
+        int limit = currentUser.isPremium() ? AppConstants.MAX_ACTIVE_JOURNEYS_GOLD : AppConstants.MAX_ACTIVE_JOURNEYS_FREE;
+        
+        if (activeCount >= limit) {
+             throw new BadRequestException("Bạn đã đạt giới hạn " + limit + " hành trình đang hoạt động.");
+        }
+
         if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) {
             throw new BadRequestException("Ngày kết thúc phải sau ngày bắt đầu");
         }
@@ -242,6 +245,8 @@ public class JourneyServiceImpl implements JourneyService {
             return mapToResponse(journey, null, "PENDING");
         }
 
+        validateJourneyCapacity(journey);
+
         JourneyParticipant member = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.MEMBER).joinedAt(LocalDateTime.now()).build();
         participantRepository.save(member);
         eventPublisher.publishEvent(new JourneyJoinedEvent(journey, currentUser));
@@ -270,7 +275,6 @@ public class JourneyServiceImpl implements JourneyService {
         List<JourneyResponse> pending = journeyRequestRepository.findAllByUserIdAndStatus(userId, RequestStatus.PENDING).stream()
                 .map(req -> mapToResponse(req.getJourney(), null, "PENDING"))
                 .collect(Collectors.toList());
-        
         List<JourneyResponse> all = new ArrayList<>(joined);
         all.addAll(pending);
         return all;
@@ -362,6 +366,7 @@ public class JourneyServiceImpl implements JourneyService {
         
         User u = req.getUser();
         if (!participantRepository.existsByJourneyIdAndUserId(journeyId, u.getId())) {
+            validateJourneyCapacity(req.getJourney());
             participantRepository.save(JourneyParticipant.builder().journey(req.getJourney()).user(u).role(JourneyRole.MEMBER).joinedAt(LocalDateTime.now()).build());
             eventPublisher.publishEvent(new JourneyJoinedEvent(req.getJourney(), u));
         }
@@ -395,5 +400,18 @@ public class JourneyServiceImpl implements JourneyService {
         }
         String creatorId = (journey.getCreator() != null) ? String.valueOf(journey.getCreator().getId()) : null;
         return JourneyResponse.builder().id(journey.getId()).name(journey.getName()).description(journey.getDescription()).startDate(journey.getStartDate()).endDate(journey.getEndDate()).visibility(journey.getVisibility()).status(journey.getStatus()).inviteCode(journey.getInviteCode()).creatorId(creatorId).participantCount((int) totalMembers).currentUserStatus(userStatus).requireApproval(journey.isRequireApproval()).build();
+    }
+
+    private void validateJourneyCapacity(Journey journey) {
+        long currentCount = participantRepository.countByJourneyId(journey.getId());
+        User creator = journey.getCreator();
+        int limit = AppConstants.MAX_PARTICIPANTS_FREE;
+        if (creator.isPremium()) {
+            limit = AppConstants.MAX_PARTICIPANTS_GOLD;
+        }
+        if (currentCount >= limit) {
+            String msg = String.format("Hành trình đã đạt giới hạn thành viên (%d/%d). Vui lòng nâng cấp tài khoản để thêm thành viên!", currentCount, limit);
+            throw new BadRequestException(msg);
+        }
     }
 }

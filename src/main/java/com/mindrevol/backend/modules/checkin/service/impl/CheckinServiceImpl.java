@@ -1,17 +1,18 @@
 package com.mindrevol.backend.modules.checkin.service.impl;
 
+import com.mindrevol.backend.common.constant.AppConstants; // [REFACTOR] Dùng Constant
 import com.mindrevol.backend.common.event.CheckinSuccessEvent;
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
+import com.mindrevol.backend.common.service.ContentModerationService;
+import com.mindrevol.backend.common.service.ImageMetadataService;
 import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
-import com.mindrevol.backend.modules.checkin.entity.ActivityType;
-import com.mindrevol.backend.modules.checkin.entity.Checkin;
-import com.mindrevol.backend.modules.checkin.entity.CheckinComment;
-import com.mindrevol.backend.modules.checkin.entity.CheckinStatus;
+import com.mindrevol.backend.modules.checkin.entity.*;
+import com.mindrevol.backend.modules.checkin.event.CheckinDeletedEvent; // [REFACTOR] Event mới
 import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
@@ -35,7 +36,9 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -44,6 +47,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture; // Vẫn giữ để tham khảo hoặc dùng cho việc khác nếu cần, nhưng logic delete sẽ bỏ
 import java.util.stream.Collectors;
 
 @Service
@@ -63,7 +67,9 @@ public class CheckinServiceImpl implements CheckinService {
     private final UserBlockRepository userBlockRepository; 
     
     private final ReactionService reactionService; 
-
+    private final ContentModerationService moderationService;
+    private final ImageMetadataService metadataService;
+    
     private Set<String> getExcludedUserIds(String userId) {
         Set<String> blockedIds = userBlockRepository.findAllBlockedUserIdsInteraction(userId);
         if (blockedIds == null) blockedIds = new HashSet<>();
@@ -91,24 +97,91 @@ public class CheckinServiceImpl implements CheckinService {
         ZoneId userZone = ZoneId.of(tz);
         LocalDate todayLocal = LocalDate.now(userZone);
 
-     // [FIX] Cho phép check-in nốt hôm nay (isAfter trả về true nếu LỚN HƠN hẳn)
-     // Hoặc an toàn hơn: Cho phép trễ 1 ngày để tránh lệch múi giờ
-     if (journey.getEndDate() != null && todayLocal.isAfter(journey.getEndDate().plusDays(1))) {
-         // Chỉ chặn khi đã trễ quá 1 ngày so với ngày kết thúc
-         throw new BadRequestException("Hành trình này đã kết thúc (Hạn chót: " + journey.getEndDate() + ").");
-     }
+        // Check End Date
+        if (journey.getEndDate() != null && todayLocal.isAfter(journey.getEndDate().plusDays(1))) {
+             throw new BadRequestException("Hành trình này đã kết thúc (Hạn chót: " + journey.getEndDate() + ").");
+        }
 
+        // Check Duplicate
         if (participant.getLastCheckinAt() != null && 
             participant.getLastCheckinAt().toLocalDate().isEqual(todayLocal)) {
              throw new BadRequestException("Hôm nay bạn đã check-in rồi!");
         }
 
         String imageUrl = "";
+        String videoUrl = null;
+        String imageFileId = null;
+        MediaType mediaType = MediaType.IMAGE;
+
         if (request.getFile() != null && !request.getFile().isEmpty()) {
-            imageUrl = fileStorageService.uploadFile(request.getFile());
+            MultipartFile file = request.getFile();
+            String contentType = file.getContentType();
+
+            // --- XỬ LÝ VIDEO ---
+            if (contentType != null && contentType.startsWith("video")) {
+                if (!currentUser.isPremium()) {
+                    throw new BadRequestException("Tính năng Video/Live Photo chỉ dành cho thành viên GOLD.");
+                }
+                
+                if (file.getSize() > AppConstants.MAX_VIDEO_SIZE_BYTES) {
+                    throw new BadRequestException("Video quá lớn. Vui lòng tải video dưới 10MB (Khoảng 3s).");
+                }
+
+                mediaType = MediaType.VIDEO;
+                
+                try {
+                    // [REFACTOR] Dùng Constant
+                    FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_VIDEOS + journey.getId());
+                    imageFileId = uploadResult.getFileId();
+                    
+                    String rawUrl = uploadResult.getUrl();
+                    videoUrl = rawUrl + "?tr=w-720,q-60,an-true"; 
+                    imageUrl = rawUrl + "/ik-thumbnail.jpg?tr=w-720"; 
+
+                } catch (Exception e) {
+                    throw new BadRequestException("Lỗi upload video: " + e.getMessage());
+                }
+                
+            } 
+            // --- XỬ LÝ ẢNH ---
+            else {
+                mediaType = MediaType.IMAGE;
+                
+                LocalDateTime exifDate = metadataService.getCreationDate(file);
+                
+                if (exifDate != null) {
+                    long diffMinutes = Duration.between(exifDate, LocalDateTime.now()).toMinutes();
+                    
+                    // [REFACTOR] Dùng Constant
+                    if (!currentUser.isPremium() && Math.abs(diffMinutes) > AppConstants.ALLOWED_PHOTO_AGE_MINUTES) {
+                        throw new BadRequestException(
+                            "Tài khoản thường chỉ được đăng ảnh chụp trong vòng " + AppConstants.ALLOWED_PHOTO_AGE_MINUTES + " phút. " +
+                            "Ảnh này chụp lúc " + exifDate.toLocalTime() + ". Hãy nâng cấp GOLD để đăng ảnh cũ!"
+                        );
+                    }
+                }
+                
+                try {
+                    // [REFACTOR] Dùng Constant
+                    FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_IMAGES + journey.getId());
+                    imageUrl = uploadResult.getUrl() + "?tr=w-1080,q-80"; 
+                    imageFileId = uploadResult.getFileId();
+
+                    moderationService.validateImage(uploadResult.getUrl()); 
+
+                } catch (BadRequestException e) {
+                    if (imageFileId != null) fileStorageService.deleteFile(imageFileId);
+                    throw e;
+                } catch (Exception e) {
+                    throw new BadRequestException("Lỗi xử lý hình ảnh: " + e.getMessage());
+                }
+            }
+        } else {
+            throw new BadRequestException("Vui lòng tải lên hình ảnh hoặc video.");
         }
 
-        return saveCheckinTransaction(currentUser, journey, participant, request, imageUrl, todayLocal);
+        return saveCheckinTransaction(currentUser, journey, participant, request, 
+                                    imageUrl, videoUrl, imageFileId, mediaType, todayLocal);
     }
     
     @Transactional
@@ -116,17 +189,16 @@ public class CheckinServiceImpl implements CheckinService {
                                                    JourneyParticipant participant, 
                                                    CheckinRequest request, 
                                                    String imageUrl,
+                                                   String videoUrl,
+                                                   String imageFileId,
+                                                   MediaType mediaType,
                                                    LocalDate todayLocal) {
-        // [CẬP NHẬT] Logic Status mới: Mặc định là NORMAL (Active)
-        // Loại bỏ logic tự động tính toán LATE/COMEBACK phức tạp.
-        CheckinStatus finalStatus = CheckinStatus.NORMAL;
         
-        // Chỉ dùng REST nếu user chủ động chọn chế độ nghỉ ngơi
+        CheckinStatus finalStatus = CheckinStatus.NORMAL;
         if (request.getStatusRequest() == CheckinStatus.REST) {
             finalStatus = CheckinStatus.REST;
         }
 
-        // Logic xử lý tên hoạt động
         String finalActivityName = request.getActivityName();
         if (finalActivityName != null && finalActivityName.trim().isEmpty()) {
             finalActivityName = null;
@@ -135,17 +207,17 @@ public class CheckinServiceImpl implements CheckinService {
         Checkin checkin = Checkin.builder()
                 .user(currentUser)
                 .journey(journey)
-                .imageUrl(imageUrl)
-                .thumbnailUrl(imageUrl) // Sẽ được xử lý resize async sau
                 .caption(request.getCaption())
-                
-                // [MỚI] Mapping Context Data
+                .mediaType(mediaType)
+                .imageUrl(imageUrl)
+                .videoUrl(videoUrl)
+                .imageFileId(imageFileId)
+                .thumbnailUrl(imageUrl)
                 .emotion(request.getEmotion())
                 .activityType(request.getActivityType() != null ? request.getActivityType() : ActivityType.DEFAULT)
                 .activityName(finalActivityName)
                 .locationName(request.getLocationName())
                 .tags(request.getTags() != null ? request.getTags() : new ArrayList<>())
-                
                 .status(finalStatus)
                 .visibility(request.getVisibility()) 
                 .createdAt(LocalDateTime.now())
@@ -154,7 +226,6 @@ public class CheckinServiceImpl implements CheckinService {
 
         checkin = checkinRepository.save(checkin);
         
-        // Vẫn cập nhật streak để hiển thị huy hiệu (Platform vẫn cần gamification ngầm)
         updateParticipantStats(participant, finalStatus, todayLocal);
 
         eventPublisher.publishEvent(new CheckinSuccessEvent(
@@ -167,7 +238,6 @@ public class CheckinServiceImpl implements CheckinService {
         return checkinMapper.toResponse(checkin);
     }
 
-    // [CẬP NHẬT] Hàm tính toán Stats độc lập, không phụ thuộc vào Status enum
     private void updateParticipantStats(JourneyParticipant participant, CheckinStatus status, LocalDate todayLocal) {
         boolean isFirstCheckinToday = false;
         
@@ -185,10 +255,8 @@ public class CheckinServiceImpl implements CheckinService {
         }
 
         if (status == CheckinStatus.REST) {
-            // Nếu nghỉ thì chỉ cập nhật thời gian, giữ nguyên streak
             participant.setLastCheckinAt(LocalDateTime.now());
         } else {
-            // Logic tính Streak dựa trên khoảng cách ngày
             if (participant.getLastCheckinAt() == null) {
                 participant.setCurrentStreak(1);
             } else {
@@ -196,13 +264,10 @@ public class CheckinServiceImpl implements CheckinService {
                 long daysGap = ChronoUnit.DAYS.between(lastDate, todayLocal);
                 
                 if (daysGap > 1) {
-                    // Mất chuỗi -> Reset về 1
                     participant.setCurrentStreak(1);
                 } else if (daysGap == 1) {
-                    // Liên tục -> Tăng chuỗi
                     participant.setCurrentStreak(participant.getCurrentStreak() + 1);
                 }
-                // Nếu daysGap == 0 (cùng ngày) -> Không làm gì (vì đã chặn checkin trùng ngày ở trên, nhưng giữ logic safe)
             }
             
             participant.setLastCheckinAt(LocalDateTime.now());
@@ -230,6 +295,7 @@ public class CheckinServiceImpl implements CheckinService {
         Pageable pageable = PageRequest.of(0, limit);
         Set<String> excludedUserIds = getExcludedUserIds(currentUser.getId());
 
+        // Logic gốc của bạn
         return checkinRepository.findUnifiedFeed(currentUser.getId(), cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
@@ -247,6 +313,7 @@ public class CheckinServiceImpl implements CheckinService {
         Pageable pageable = PageRequest.of(0, limit);
         Set<String> excludedUserIds = getExcludedUserIds(currentUser.getId());
 
+        // Logic gốc của bạn
         return checkinRepository.findJourneyFeedByCursor(journeyId, cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
@@ -308,18 +375,29 @@ public class CheckinServiceImpl implements CheckinService {
                 .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
 
         if (!checkin.getUser().getId().equals(currentUser.getId())) {
-            throw new BadRequestException("Bạn không có quyền xóa bài viết này");
+            // Cho phép Admin xóa (nếu cần)
+            boolean isAdmin = currentUser.getRoles().stream().anyMatch(r -> r.getName().equals("ADMIN"));
+            if (!isAdmin) throw new BadRequestException("Bạn không có quyền xóa bài viết này");
         }
 
         Journey journey = checkin.getJourney();
+        
+        // 1. Xóa trong DB (Giao dịch chính)
         checkinRepository.delete(checkin);
-        checkinRepository.flush(); 
+        checkinRepository.flush(); // Đảm bảo Hibernate gửi lệnh SQL Delete ngay
+
+        // 2. [REFACTOR] Thay thế CompletableFuture bằng Event
+        // Logic cũ: CompletableFuture.runAsync(...) -> Nguy cơ file rác/mất link nếu DB rollback
+        // Logic mới: Bắn event, listener sẽ chỉ chạy khi Transaction COMMIT thành công.
+        if (checkin.getImageFileId() != null) {
+            eventPublisher.publishEvent(new CheckinDeletedEvent(checkin.getImageFileId()));
+        }
 
         JourneyParticipant participant = participantRepository
-                .findByJourneyIdAndUserId(journey.getId(), currentUser.getId())
+                .findByJourneyIdAndUserId(journey.getId(), checkin.getUser().getId()) // Lấy ID từ checkin
                 .orElseThrow(() -> new ResourceNotFoundException("Participant not found"));
 
-        recalculateParticipantStats(participant, currentUser);
+        recalculateParticipantStats(participant, checkin.getUser());
     }
 
     private void recalculateParticipantStats(JourneyParticipant participant, User user) {
@@ -354,8 +432,6 @@ public class CheckinServiceImpl implements CheckinService {
         int streak = 0;
         LocalDate cursorDate = today;
         
-        // Logic tính streak này đã đúng (kiểm tra liên tục ngược dòng thời gian)
-        // Nếu hôm nay chưa check-in thì kiểm tra hôm qua
         if (!uniqueDates.contains(cursorDate)) {
             if (uniqueDates.contains(cursorDate.minusDays(1))) {
                 cursorDate = cursorDate.minusDays(1); 

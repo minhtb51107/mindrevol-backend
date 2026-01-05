@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="011-drop-col-habit-id" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <columnExists tableName="checkin" columnName="habit_id"/>
+        </preConditions>
+        <dropColumn tableName="checkin" columnName="habit_id"/>
+    </changeSet>
+
+    <changeSet id="011-drop-table-habit-log" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="habit_log"/>
+        </preConditions>
+        <dropTable tableName="habit_log"/>
+    </changeSet>
+
+    <changeSet id="011-drop-table-habit" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="habit"/>
+        </preConditions>
+        <dropTable tableName="habit"/>
+    </changeSet>
+
+    <changeSet id="011-drop-table-user-badge" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="user_badge"/>
+        </preConditions>
+        <dropTable tableName="user_badge"/>
+    </changeSet>
+
+    <changeSet id="011-drop-table-badge" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="badge"/>
+        </preConditions>
+        <dropTable tableName="badge"/>
+    </changeSet>
+
+    <changeSet id="011-drop-table-point-history" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="point_history"/>
+        </preConditions>
+        <dropTable tableName="point_history"/>
+    </changeSet>
+
+</databaseChangeLog>

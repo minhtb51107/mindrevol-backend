@@ -1,16 +1,23 @@
 package com.mindrevol.backend.modules.notification.entity;
 
 public enum NotificationType {
-    SYSTEM,             // Thông báo hệ thống chung
-    FRIEND_REQUEST,     // A gửi lời mời kết bạn
-    FRIEND_ACCEPTED,    // A đã chấp nhận kết bạn
-    JOURNEY_INVITE,     // A mời vào hành trình
-    JOURNEY_JOINED,     // A đã tham gia hành trình
-    CHECKIN_REMINDER,   // Nhắc nhở chưa check-in (Sắp hết ngày)
-    STREAK_LOST,        // Thông báo mất chuỗi (An ủi)
-    STREAK_SAVED,       // Thông báo dùng vé đóng băng thành công
-    REACTION,           // A đã thả tim check-in của bạn
-    COMMENT,            // A đã bình luận
-    COMEBACK,           // Bạn bè A đã quay trở lại (Comeback)
-    NUDGE               // MỚI: Chọc ghẹo/Nhắc nhở bạn bè
+    // System & Account
+    SYSTEM,
+    WELCOME,
+    
+    // Social Interaction
+    FRIEND_REQUEST,
+    FRIEND_ACCEPTED,
+    
+    // Journey & Check-in
+    JOURNEY_INVITE,
+    JOURNEY_JOINED,
+    NEW_POST,           // Ai đó đăng bài trong Journey
+    REACTION,           // Ai đó thả tim
+    COMMENT,            // Ai đó bình luận
+    MENTION,            // Ai đó tag bạn
+    
+    // Recap
+    RECAP_READY         // Video recap đã sẵn sàng
+, CHECKIN
 }

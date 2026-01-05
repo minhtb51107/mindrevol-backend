@@ -120,6 +120,9 @@ dependencies {
     
     implementation 'com.github.f4b6a3:uuid-creator:5.3.7'
     
+    implementation 'com.drewnoakes:metadata-extractor:2.18.0'
+    
+    implementation 'com.github.loki4j:loki-logback-appender:1.5.1'
 }
 
 tasks.named('test') {

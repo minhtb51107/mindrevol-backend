@@ -15,6 +15,7 @@ import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -32,58 +33,61 @@ public class FeedEventListener {
     @Async("taskExecutor")
     @EventListener
     @Transactional(readOnly = true)
-    public void handleFanOut(CheckinSuccessEvent event) {
-        log.info("Starting Feed Fan-out for Checkin: {}", event.getCheckinId());
+    public void handleCacheInvalidation(CheckinSuccessEvent event) {
+        // Sự kiện: Có ai đó vừa đăng bài -> Cần làm mới feed cho những người liên quan
+        log.info("Processing Feed Invalidation for Checkin: {}", event.getCheckinId());
 
-        // event.getCheckinId() là String -> OK
         Checkin checkin = checkinRepository.findById(event.getCheckinId()).orElse(null);
         if (checkin == null) return;
 
         String authorId = checkin.getUser().getId();
         CheckinVisibility visibility = checkin.getVisibility();
+        String journeyId = checkin.getJourney().getId();
 
-        // 1. Luôn push vào feed của chính tác giả
-        feedService.pushToFeed(authorId, checkin.getId());
+        // Tập hợp danh sách các user cần xóa cache (dùng Set để tránh trùng lặp)
+        Set<String> usersToInvalidate = new HashSet<>();
+
+        // 1. Luôn xóa cache của tác giả (để họ thấy bài của chính mình)
+        usersToInvalidate.add(authorId);
 
         if (visibility == CheckinVisibility.PRIVATE) {
-            return; 
+            doInvalidate(usersToInvalidate);
+            return;
         }
 
-        // 2. Lấy danh sách thành viên (Check lại JourneyParticipantRepository xem đã đổi UUID chưa)
-        // checkin.getJourney().getId() trả về String -> OK
-        List<JourneyParticipant> participants = participantRepository.findAllByJourneyId(checkin.getJourney().getId());
-
-        // 3. Lấy danh sách bạn bè
-        Set<String> friendIds = null;
+        // 2. Lấy thành viên trong hành trình (vì bài đăng thuộc hành trình)
+        List<JourneyParticipant> participants = participantRepository.findAllByJourneyId(journeyId);
+        
+        // 3. Lấy danh sách bạn bè (nếu visibility là FRIENDS_ONLY)
+        Set<String> friendIds = new HashSet<>();
         if (visibility == CheckinVisibility.FRIENDS_ONLY) {
-            // friendshipRepository cần nhận String authorId
             friendIds = friendshipRepository.findAllAcceptedFriendsList(authorId).stream()
-                    .map(f -> f.getFriend(authorId).getId()) 
+                    .map(f -> f.getFriend(authorId).getId())
                     .collect(Collectors.toSet());
         }
 
-        // 4. Duyệt và Push
+        // 4. Lọc danh sách
         for (JourneyParticipant p : participants) {
             String memberId = p.getUser().getId();
-            
             if (memberId.equals(authorId)) continue;
 
-            boolean shouldPush = false;
-
             if (visibility == CheckinVisibility.PUBLIC) {
-                shouldPush = true;
+                usersToInvalidate.add(memberId);
             } else if (visibility == CheckinVisibility.FRIENDS_ONLY) {
-                if (friendIds != null && friendIds.contains(memberId)) {
-                    shouldPush = true;
+                if (friendIds.contains(memberId)) {
+                    usersToInvalidate.add(memberId);
                 }
             }
-
-            if (shouldPush) {
-                // feedService cần nhận (String userId, String checkinId)
-                feedService.pushToFeed(memberId, checkin.getId());
-            }
         }
-        
-        log.info("Fan-out completed for Checkin {}", checkin.getId());
+
+        // 5. Thực hiện xóa cache
+        doInvalidate(usersToInvalidate);
+    }
+
+    private void doInvalidate(Set<String> userIds) {
+        log.info("Invalidating feed cache for {} users.", userIds.size());
+        for (String userId : userIds) {
+            feedService.evictFeedCache(userId);
+        }
     }
 }

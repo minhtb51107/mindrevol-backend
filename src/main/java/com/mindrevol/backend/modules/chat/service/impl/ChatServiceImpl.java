@@ -55,12 +55,13 @@ public class ChatServiceImpl implements ChatService {
         User sender = userRepository.getReferenceById(senderId);
         User receiver = userRepository.getReferenceById(receiverId);
 
-        // [FIX] Xử lý list conversation (nếu có duplicate thì lấy cái đầu tiên)
+        // [FIX] Kiểm tra hội thoại đã tồn tại chưa
         List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
         Conversation conversation;
         if (existingConvs.isEmpty()) {
             conversation = createNewConversation(sender, receiver);
         } else {
+            // Lấy cái mới nhất để tiếp tục chat
             conversation = existingConvs.get(0);
         }
 
@@ -113,7 +114,6 @@ public class ChatServiceImpl implements ChatService {
 
         return conversations.stream().map(conv -> {
             User partnerEntity = conv.getUser1().getId().equals(userId) ? conv.getUser2() : conv.getUser1();
-            
             boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
 
             UserSummaryResponse partnerDto = UserSummaryResponse.builder()
@@ -148,7 +148,6 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional(readOnly = true)
     public Page<MessageResponse> getMessagesWithUser(String currentUserId, String partnerId, Pageable pageable) { 
-        // [FIX] Lấy list và findFirst để tránh lỗi NonUniqueResultException
         List<Conversation> conversations = conversationRepository.findByUsers(currentUserId, partnerId);
         
         Conversation conversation = conversations.stream()
@@ -228,14 +227,13 @@ public class ChatServiceImpl implements ChatService {
         User sender = userRepository.getReferenceById(senderId);
         User receiver = userRepository.getReferenceById(receiverId);
 
-        // [FIX] Handle duplicate conversations gracefully
+        // [FIX] Xử lý duplicate conversation
         List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
         Conversation conversation;
         
         if (existingConvs.isEmpty()) {
              conversation = createNewConversation(sender, receiver);
         } else {
-             // Lấy cái đầu tiên (mới nhất do đã order by DESC trong repository)
              conversation = existingConvs.get(0);
         }
 
@@ -244,7 +242,6 @@ public class ChatServiceImpl implements ChatService {
 
     private ConversationResponse mapToConversationResponse(Conversation conv, String currentUserId) {
         User partnerEntity = conv.getUser1().getId().equals(currentUserId) ? conv.getUser2() : conv.getUser1();
-        
         boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
 
         UserSummaryResponse partnerDto = UserSummaryResponse.builder()

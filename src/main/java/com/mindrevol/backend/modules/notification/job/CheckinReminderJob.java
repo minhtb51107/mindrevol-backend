@@ -49,6 +49,7 @@ public class CheckinReminderJob {
     @Transactional
     public boolean processReminderBatch(LocalDateTime startOfToday, Pageable pageable) {
         // Query tìm người chưa check-in kể từ đầu ngày
+        // (Lưu ý: Đảm bảo repository của bạn có method findParticipantsToRemind này)
         Slice<JourneyParticipant> slice = participantRepository.findParticipantsToRemind(startOfToday, pageable);
         List<JourneyParticipant> participants = slice.getContent();
         
@@ -58,17 +59,16 @@ public class CheckinReminderJob {
 
         for (JourneyParticipant p : participants) {
             try {
-                // [FIX] Bỏ logic Hardcore, dùng thông báo chung thân thiện
                 String title = "Đừng quên kỷ niệm hôm nay! 📸";
                 String message = "Bạn chưa check-in cho hành trình " + p.getJourney().getName() + ". Hãy lưu giữ khoảnh khắc trước khi ngày trôi qua nhé!";
 
                 notificationService.sendAndSaveNotification(
                         p.getUser().getId(),
                         null, // System notification
-                        NotificationType.CHECKIN_REMINDER,
+                        NotificationType.SYSTEM, // [FIX] Đã đổi từ CHECKIN_REMINDER sang SYSTEM
                         title,
                         message,
-                        p.getJourney().getId().toString(),
+                        p.getJourney().getId(), // [UUID Fix] Chuyển ID sang String nếu cần
                         null
                 );
             } catch (Exception e) {

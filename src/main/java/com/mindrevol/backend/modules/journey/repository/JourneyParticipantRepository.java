@@ -43,4 +43,6 @@ public interface JourneyParticipantRepository extends JpaRepository<JourneyParti
            "WHERE j.status = 'ONGOING' " +
            "AND (jp.lastCheckinAt IS NULL OR jp.lastCheckinAt < :startOfToday)")
     Slice<JourneyParticipant> findParticipantsToRemind(@Param("startOfToday") LocalDateTime startOfToday, Pageable pageable);
+
+	long countActiveByUserId(String userId);
 }

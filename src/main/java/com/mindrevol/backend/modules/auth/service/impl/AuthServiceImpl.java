@@ -1,14 +1,46 @@
 package com.mindrevol.backend.modules.auth.service.impl;
 
-import java.io.IOException;
-import java.security.GeneralSecurityException;
-import java.util.*;
-import java.util.concurrent.TimeUnit;
-
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindrevol.backend.common.exception.BadRequestException;
+import com.mindrevol.backend.common.exception.ResourceNotFoundException;
+import com.mindrevol.backend.common.service.AsyncTaskProducer;
+import com.mindrevol.backend.common.utils.JwtUtil;
+import com.mindrevol.backend.modules.auth.dto.RedisUserSession;
+import com.mindrevol.backend.modules.auth.dto.request.*;
+import com.mindrevol.backend.modules.auth.dto.response.JwtResponse;
+import com.mindrevol.backend.modules.auth.dto.response.UserSessionResponse;
+import com.mindrevol.backend.modules.auth.entity.*;
+import com.mindrevol.backend.modules.auth.repository.*;
+import com.mindrevol.backend.modules.auth.service.AuthService;
+import com.mindrevol.backend.modules.auth.service.strategy.SocialLoginFactory;
+import com.mindrevol.backend.modules.auth.service.strategy.SocialLoginStrategy;
+import com.mindrevol.backend.modules.auth.service.strategy.SocialProviderData;
+import com.mindrevol.backend.modules.auth.util.AppleAuthUtil;
+import com.mindrevol.backend.modules.notification.dto.EmailTask;
+import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
+import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
+import com.mindrevol.backend.modules.user.entity.AccountType;
+import com.mindrevol.backend.modules.user.entity.Gender;
+import com.mindrevol.backend.modules.user.entity.Role;
+import com.mindrevol.backend.modules.user.entity.User;
+import com.mindrevol.backend.modules.user.entity.UserStatus;
+import com.mindrevol.backend.modules.user.repository.RoleRepository;
+import com.mindrevol.backend.modules.user.repository.UserRepository;
+import com.mindrevol.backend.modules.user.service.UserService;
+import io.jsonwebtoken.Claims;
+import jakarta.servlet.http.HttpServletRequest;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.RandomStringUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.http.*;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -21,39 +53,8 @@ import org.springframework.util.LinkedMultiValueMap;
 import org.springframework.util.MultiValueMap;
 import org.springframework.web.client.RestTemplate;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdToken;
-import com.google.api.client.googleapis.auth.oauth2.GoogleIdTokenVerifier;
-import com.google.api.client.http.javanet.NetHttpTransport;
-import com.google.api.client.json.gson.GsonFactory;
-import com.mindrevol.backend.common.exception.BadRequestException;
-import com.mindrevol.backend.common.exception.ResourceNotFoundException;
-import com.mindrevol.backend.common.service.AsyncTaskProducer;
-import com.mindrevol.backend.common.utils.JwtUtil;
-import com.mindrevol.backend.modules.auth.dto.RedisUserSession;
-import com.mindrevol.backend.modules.auth.dto.request.*;
-import com.mindrevol.backend.modules.auth.dto.response.JwtResponse;
-import com.mindrevol.backend.modules.auth.dto.response.UserSessionResponse;
-import com.mindrevol.backend.modules.auth.entity.*;
-import com.mindrevol.backend.modules.auth.repository.*;
-import com.mindrevol.backend.modules.auth.service.AuthService;
-import com.mindrevol.backend.modules.auth.util.AppleAuthUtil;
-import com.mindrevol.backend.modules.notification.dto.EmailTask;
-import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
-import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
-import com.mindrevol.backend.modules.user.entity.Gender;
-import com.mindrevol.backend.modules.user.entity.Role;
-import com.mindrevol.backend.modules.user.entity.User;
-import com.mindrevol.backend.modules.user.entity.UserStatus;
-import com.mindrevol.backend.modules.user.repository.RoleRepository;
-import com.mindrevol.backend.modules.user.repository.UserRepository;
-import com.mindrevol.backend.modules.user.service.UserService;
-
-import io.jsonwebtoken.Claims;
-import jakarta.servlet.http.HttpServletRequest;
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
+import java.util.*;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -73,99 +74,137 @@ public class AuthServiceImpl implements AuthService {
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
     private final AsyncTaskProducer asyncTaskProducer;
-    private final RestTemplate restTemplate;
-
     private final UserService userService;
     private final RedisTemplate<String, Object> redisTemplate;
+    
+    // [REFACTOR] Inject Factory
+    private final SocialLoginFactory socialLoginFactory;
+    
+    // Inject các bean cũ để giữ tương thích với các hàm cũ (nếu chưa chuyển hết sang strategy)
+    private final RestTemplate restTemplate;
     private final AppleAuthUtil appleAuthUtil;
     private final ObjectMapper objectMapper;
 
-    @Value("${spring.security.oauth2.client.registration.google.client-id}")
-    private String googleClientId;
-
     @Value("${app.jwt.refresh-token-expiration-ms}")
     private long refreshTokenExpirationMs;
-
-    @Value("${spring.security.oauth2.client.registration.apple.client-id}")
-    private String appleClientId;
-
-    // --- CONFIG TIKTOK ---
-    @Value("${tiktok.client-key}")
-    private String tiktokClientKey;
-
-    @Value("${tiktok.client-secret}")
-    private String tiktokClientSecret;
+    
+    // Configs cho các hàm legacy (nếu còn dùng)
+    @Value("${tiktok.client-key:}") private String tiktokClientKey;
+    @Value("${tiktok.client-secret:}") private String tiktokClientSecret;
 
     private static final String SESSION_PREFIX = "session:";
     private static final String USER_SESSIONS_PREFIX = "user_sessions:";
 
-    // --- [MỚI] TIKTOK LOGIN (Đã fix thêm code_verifier) ---
-    @Override
-    public JwtResponse loginWithTikTok(TikTokLoginRequest request, HttpServletRequest servletRequest) {
-        try {
-            // B1: Đổi Code lấy Access Token
-            String tokenUrl = "https://open.tiktokapis.com/v2/oauth/token/";
-            
-            HttpHeaders headers = new HttpHeaders();
-            headers.setContentType(MediaType.APPLICATION_FORM_URLENCODED);
-            
-            MultiValueMap<String, String> map = new LinkedMultiValueMap<>();
-            map.add("client_key", tiktokClientKey);
-            map.add("client_secret", tiktokClientSecret);
-            map.add("code", request.getCode());
-            map.add("grant_type", "authorization_code");
-            map.add("redirect_uri", "https://mindrevol.vercel.app/auth/callback/tiktok");
-            
-            // --- QUAN TRỌNG: Gửi Verifier để TikTok kiểm tra khớp với Challenge lúc nãy ---
-            map.add("code_verifier", request.getCodeVerifier());
-            // ----------------------------------------------------------------------------
+    // ==================================================================================
+    // NEW: UNIFIED SOCIAL LOGIN LOGIC (STRATEGY PATTERN)
+    // ==================================================================================
 
-            HttpEntity<MultiValueMap<String, String>> entity = new HttpEntity<>(map, headers);
-            
-            Map<String, Object> tokenResponse = restTemplate.postForObject(tokenUrl, entity, Map.class);
-            
-            if (tokenResponse == null || !tokenResponse.containsKey("access_token")) {
-                throw new BadRequestException("Không thể lấy Access Token từ TikTok. (Token Response: " + tokenResponse + ")");
-            }
-            
-            String accessToken = (String) tokenResponse.get("access_token");
-            String openId = (String) tokenResponse.get("open_id");
-
-            // B2: Lấy thông tin User
-            String userInfoUrl = "https://open.tiktokapis.com/v2/user/info/?fields=open_id,union_id,avatar_url,display_name";
-            HttpHeaders infoHeaders = new HttpHeaders();
-            infoHeaders.setBearerAuth(accessToken);
-            HttpEntity<String> infoEntity = new HttpEntity<>(infoHeaders);
-            
-            ResponseEntity<Map> infoResponse = restTemplate.exchange(userInfoUrl, HttpMethod.GET, infoEntity, Map.class);
-            
-            String displayName = "TikTok User";
-            String avatarUrl = null;
-            
-            if (infoResponse.getBody() != null && infoResponse.getBody().containsKey("data")) {
-                Map<String, Object> data = (Map<String, Object>) infoResponse.getBody().get("data");
-                if (data.containsKey("user")) {
-                    Map<String, Object> userObj = (Map<String, Object>) data.get("user");
-                    displayName = (String) userObj.get("display_name");
-                    avatarUrl = (String) userObj.get("avatar_url");
-                }
-            }
-
-            // Tạo email giả định để định danh
-            String fakeEmail = "tiktok_" + openId + "@tiktok.mindrevol.com";
-
-            // B3: Xử lý đăng nhập
-            User user = processSocialLogin(fakeEmail, displayName, avatarUrl, "TIKTOK", openId);
-            
-            return createTokenAndSession(user, servletRequest);
-
-        } catch (Exception e) {
-            log.error("TikTok Login Error", e);
-            throw new BadRequestException("Lỗi xác thực TikTok: " + e.getMessage());
-        }
+    private JwtResponse processUnifiedSocialLogin(String providerName, Object requestData, HttpServletRequest servletRequest) {
+        // 1. Chọn chiến lược
+        SocialLoginStrategy strategy = socialLoginFactory.getStrategy(providerName);
+        
+        // 2. Xác thực và lấy dữ liệu chuẩn hóa
+        SocialProviderData data = strategy.verifyAndGetData(requestData);
+        
+        // 3. Xử lý User (Tìm hoặc tạo)
+        User user = findOrCreateUser(providerName, data);
+        
+        // 4. Tạo session
+        return createTokenAndSession(user, servletRequest);
     }
 
-    // --- CÁC HÀM KHÁC (Giữ nguyên) ---
+    private User findOrCreateUser(String provider, SocialProviderData data) {
+        // A. Tìm trong bảng liên kết trước (SocialAccount)
+        Optional<SocialAccount> socialAccountOpt = socialAccountRepository.findByProviderAndProviderId(provider, data.getProviderId());
+        if (socialAccountOpt.isPresent()) {
+            return socialAccountOpt.get().getUser();
+        }
+
+        // B. Nếu chưa có liên kết, kiểm tra email trong bảng User
+        User user;
+        Optional<User> existingUser = Optional.empty();
+        if (data.getEmail() != null) {
+            existingUser = userRepository.findByEmail(data.getEmail());
+        }
+        
+        if (existingUser.isPresent()) {
+            user = existingUser.get();
+            // User đã tồn tại -> Sẽ tạo liên kết mới ở bước D
+        } else {
+            // C. User mới tinh -> Tạo User mới
+            user = createNewSocialUser(data.getEmail(), data.getName(), data.getAvatarUrl());
+        }
+
+        // D. Lưu liên kết
+        SocialAccount newLink = SocialAccount.builder()
+                .user(user)
+                .provider(provider)
+                .providerId(data.getProviderId())
+                .email(data.getEmail())
+                .avatarUrl(data.getAvatarUrl())
+                // [FIX] Bỏ dòng connectedAt vì Entity không có, dùng createdAt của BaseEntity
+                .build();
+        socialAccountRepository.save(newLink);
+        
+        return user;
+    }
+
+    private User createNewSocialUser(String email, String name, String avatarUrl) {
+        String safeEmail = (email != null) ? email : "no-email-" + UUID.randomUUID() + "@mindrevol.local";
+        String baseHandle = safeEmail.split("@")[0].replaceAll("[^a-zA-Z0-9]", "");
+        if (baseHandle.isEmpty()) baseHandle = "user";
+        
+        String handle = baseHandle;
+        int suffix = 1;
+        while (userRepository.existsByHandle(handle)) {
+            handle = baseHandle + "." + (++suffix);
+        }
+        
+        Role userRole = roleRepository.findByName("USER")
+                .orElseGet(() -> roleRepository.save(Role.builder().name("USER").build()));
+        
+        User newUser = User.builder()
+                .email(safeEmail)
+                .fullname(name != null ? name : "New User")
+                .avatarUrl(avatarUrl)
+                .handle(handle)
+                .password(passwordEncoder.encode(UUID.randomUUID().toString())) // Pass rác
+                .status(UserStatus.ACTIVE)
+                .gender(Gender.PREFER_NOT_TO_SAY)
+                .accountType(AccountType.FREE)
+                .authProvider("SOCIAL")
+                .roles(new HashSet<>(Collections.singletonList(userRole)))
+                .build();
+        return userRepository.save(newUser);
+    }
+
+    // ==================================================================================
+    // IMPLEMENTATION OF INTERFACE METHODS (DELEGATING TO STRATEGY)
+    // ==================================================================================
+
+    @Override
+    public JwtResponse loginWithTikTok(TikTokLoginRequest request, HttpServletRequest servletRequest) {
+        return processUnifiedSocialLogin("tiktok", request, servletRequest);
+    }
+
+    @Override
+    public JwtResponse loginWithGoogle(GoogleLoginRequest request, HttpServletRequest servletRequest) {
+        return processUnifiedSocialLogin("google", request, servletRequest);
+    }
+
+    @Override
+    public JwtResponse loginWithFacebook(FacebookLoginRequest request, HttpServletRequest servletRequest) {
+        return processUnifiedSocialLogin("facebook", request, servletRequest);
+    }
+
+    @Override
+    public JwtResponse loginWithApple(AppleLoginRequest request, HttpServletRequest servletRequest) {
+        return processUnifiedSocialLogin("apple", request, servletRequest);
+    }
+
+    // ==================================================================================
+    // NORMAL AUTH METHODS (REGISTER, LOGIN LOCAL, OTP...) - GIỮ NGUYÊN
+    // ==================================================================================
 
     @Override
     public void registerUser(RegisterRequest request) {
@@ -188,6 +227,8 @@ public class AuthServiceImpl implements AuthService {
                 .dateOfBirth(request.getDateOfBirth())
                 .gender(request.getGender()) 
                 .status(UserStatus.PENDING_ACTIVATION)
+                .accountType(AccountType.FREE)
+                .authProvider("LOCAL")
                 .roles(new HashSet<>(Collections.singletonList(userRole)))
                 .build();
 
@@ -243,112 +284,6 @@ public class AuthServiceImpl implements AuthService {
             userRepository.save(user);
         }
         return createTokenAndSession(user, servletRequest);
-    }
-
-    private User processSocialLogin(String email, String name, String avatarUrl, String provider, String providerId) {
-        Optional<SocialAccount> socialAccountOpt = socialAccountRepository.findByProviderAndProviderId(provider, providerId);
-        if (socialAccountOpt.isPresent()) {
-            return socialAccountOpt.get().getUser(); 
-        }
-        User user = userRepository.findByEmail(email)
-                .orElseGet(() -> createNewSocialUser(email, name, avatarUrl)); 
-
-        SocialAccount newLink = SocialAccount.builder()
-                .user(user)
-                .provider(provider)
-                .providerId(providerId)
-                .email(email)
-                .avatarUrl(avatarUrl)
-                .build();
-        socialAccountRepository.save(newLink);
-        return user;
-    }
-
-    private User createNewSocialUser(String email, String name, String avatarUrl) {
-        String baseHandle = email.split("@")[0].replaceAll("[^a-zA-Z0-9]", "");
-        String handle = baseHandle;
-        int suffix = 1;
-        while (userRepository.existsByHandle(handle)) {
-            handle = baseHandle + "." + (++suffix);
-        }
-        Role userRole = roleRepository.findByName("USER")
-                .orElseGet(() -> roleRepository.save(Role.builder().name("USER").build()));
-        User newUser = User.builder()
-                .email(email)
-                .fullname(name)
-                .avatarUrl(avatarUrl)
-                .handle(handle)
-                .password(passwordEncoder.encode(UUID.randomUUID().toString())) 
-                .status(UserStatus.ACTIVE)
-                .gender(Gender.PREFER_NOT_TO_SAY) 
-                .roles(new HashSet<>(Collections.singletonList(userRole)))
-                .build();
-        return userRepository.save(newUser);
-    }
-
-    @Override
-    public JwtResponse loginWithGoogle(GoogleLoginRequest request, HttpServletRequest servletRequest) {
-        String userInfoUrl = "https://www.googleapis.com/oauth2/v3/userinfo?access_token=" + request.getAccessToken();
-        try {
-            Map<String, Object> googleProfile = restTemplate.getForObject(userInfoUrl, Map.class);
-            if (googleProfile == null || !googleProfile.containsKey("email")) throw new BadRequestException("Không thể lấy email từ Google.");
-            String email = (String) googleProfile.get("email");
-            String sub = (String) googleProfile.get("sub"); 
-            String name = (String) googleProfile.get("name");
-            String picture = (String) googleProfile.get("picture");
-            User user = processSocialLogin(email, name, picture, "GOOGLE", sub);
-            return createTokenAndSession(user, servletRequest);
-        } catch (Exception e) {
-            throw new BadRequestException("Lỗi xác thực Google: " + e.getMessage());
-        }
-    }
-
-    @Override
-    public JwtResponse loginWithFacebook(FacebookLoginRequest request, HttpServletRequest servletRequest) {
-        String url = "https://graph.facebook.com/me?fields=id,name,email,picture.width(200).height(200)&access_token=" + request.getAccessToken();
-        try {
-            Map<String, Object> fbProfile = restTemplate.getForObject(url, Map.class);
-            if (fbProfile == null || !fbProfile.containsKey("email")) throw new BadRequestException("Không lấy được email từ Facebook.");
-            String email = (String) fbProfile.get("email");
-            String fbId = (String) fbProfile.get("id");
-            String name = (String) fbProfile.get("name");
-            String avatarUrl = null;
-            try {
-                Map<String, Object> picture = (Map<String, Object>) fbProfile.get("picture");
-                Map<String, Object> data = (Map<String, Object>) picture.get("data");
-                avatarUrl = (String) data.get("url");
-            } catch (Exception ignored) {}
-            User user = processSocialLogin(email, name, avatarUrl, "FACEBOOK", fbId);
-            return createTokenAndSession(user, servletRequest);
-        } catch (Exception e) {
-            throw new BadRequestException("Facebook Auth Failed: " + e.getMessage());
-        }
-    }
-
-    @Override
-    public JwtResponse loginWithApple(AppleLoginRequest request, HttpServletRequest servletRequest) {
-        try {
-            Claims claims = appleAuthUtil.validateToken(request.getIdentityToken());
-            String email = claims.get("email", String.class);
-            String sub = claims.getSubject();
-            if (email == null) throw new BadRequestException("Apple không trả về email.");
-            String name = "Apple User"; 
-            if (request.getUser() != null) {
-                try {
-                    JsonNode node = objectMapper.readTree(request.getUser());
-                    JsonNode nameNode = node.get("name");
-                    if (nameNode != null) {
-                        String fName = nameNode.has("firstName") ? nameNode.get("firstName").asText() : "";
-                        String lName = nameNode.has("lastName") ? nameNode.get("lastName").asText() : "";
-                        name = (fName + " " + lName).trim();
-                    }
-                } catch (Exception ignored) {}
-            }
-            User user = processSocialLogin(email, name, null, "APPLE", sub);
-            return createTokenAndSession(user, servletRequest);
-        } catch (Exception e) {
-            throw new BadRequestException("Apple Auth Failed: " + e.getMessage());
-        }
     }
 
     @Override
@@ -538,22 +473,14 @@ public class AuthServiceImpl implements AuthService {
     @Override
     public boolean hasPassword(String email) {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        // Nếu AuthProvider là LOCAL thì chắc chắn có password
-        // Nếu là Google/Facebook... thì mặc định ban đầu là chưa có password (password rác)
         return "LOCAL".equals(user.getAuthProvider());
     }
 
     @Override
     public void createPassword(CreatePasswordRequest request, String email) {
         User user = userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        
-        // Cập nhật mật khẩu mới
         user.setPassword(passwordEncoder.encode(request.getNewPassword()));
-        
-        // Chuyển trạng thái thành LOCAL để hệ thống nhận diện là User này đã có password
-        // Điều này cho phép họ sử dụng cả đăng nhập Google VÀ đăng nhập bằng Mật khẩu
         user.setAuthProvider("LOCAL"); 
-        
         userRepository.save(user);
     }
 }

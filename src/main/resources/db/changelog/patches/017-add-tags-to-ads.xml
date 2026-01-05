@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="017-add-tags-to-ads" author="mindrevol">
+        <addColumn tableName="system_ads">
+            <column name="target_tags" type="VARCHAR(255)" 
+                    remarks="Tags mục tiêu: coffee, travel, cat...">
+            </column>
+            
+            <column name="type" type="VARCHAR(50)" defaultValue="INTERNAL_AD" 
+                    remarks="Loại quảng cáo: INTERNAL_AD hoặc AFFILIATE_AD">
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
