@@ -76,7 +76,7 @@ public class SecurityConfig {
             .exceptionHandling(exception -> exception.authenticationEntryPoint(unauthorizedHandler))
             .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
-                // 1. PUBLIC ENDPOINTS (Ai cũng vào được - KHÔNG CẦN LOGIN)
+                // 1. PUBLIC ENDPOINTS
                 .requestMatchers(
                         "/api/v1/auth/**",
                         "/uploads/**",
@@ -88,20 +88,18 @@ public class SecurityConfig {
                         "/api/v1/plans/{shareableLink}/public",
                         "/actuator/health",
                         "/api/v1/payment/webhook",
-                        
-                        // [THAY ĐỔI TẠI ĐÂY] Cho phép Prometheus truy cập tự do để lấy metrics
-                        "/actuator/prometheus"
+                        "/actuator/prometheus" // Vẫn giữ public ở đây
                 ).permitAll()
 
-                // [ĐÃ XÓA] Dòng yêu cầu ADMIN cũ: .requestMatchers("/actuator/prometheus").hasRole("ADMIN")
-
-                // 3. SECURED API ENDPOINTS
+                // 2. SECURED API ENDPOINTS
                 .requestMatchers("/api/v1/**").authenticated()
                 .requestMatchers(HttpMethod.OPTIONS).permitAll()
                 .requestMatchers(HttpMethod.POST, "/api/v1/files/upload").authenticated()
                 .anyRequest().authenticated()
             )
-            .httpBasic(Customizer.withDefaults());
+            // [QUAN TRỌNG NHẤT] Sửa dòng này: TẮT LUÔN HTTP BASIC
+            // Để server lờ đi mọi user/pass rác mà Grafana gửi tới
+            .httpBasic(AbstractHttpConfigurer::disable); 
 
         http.authenticationProvider(authenticationProvider());
         http.addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter.class);
@@ -110,6 +108,7 @@ public class SecurityConfig {
         return http.build();
     }
 
+    // ... (Phần CorsConfigurationSource giữ nguyên không đổi) ...
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
