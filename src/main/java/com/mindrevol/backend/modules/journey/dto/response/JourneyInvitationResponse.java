@@ -1,6 +1,7 @@
 package com.mindrevol.backend.modules.journey.dto.response;
 
 import com.mindrevol.backend.modules.journey.entity.JourneyInvitationStatus;
+import com.mindrevol.backend.modules.journey.entity.JourneyStatus; // [MỚI] Import Enum
 import lombok.Builder;
 import lombok.Data;
 import java.time.LocalDateTime;
@@ -14,5 +15,8 @@ public class JourneyInvitationResponse {
     private String inviterName;
     private String inviterAvatar;
     private JourneyInvitationStatus status;
+    
+    private JourneyStatus journeyStatus; // [MỚI] Thêm trường này để FE biết trạng thái hành trình
+    
     private LocalDateTime sentAt;
 }

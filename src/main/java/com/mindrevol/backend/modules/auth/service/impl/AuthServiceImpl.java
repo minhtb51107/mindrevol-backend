@@ -483,4 +483,36 @@ public class AuthServiceImpl implements AuthService {
         user.setAuthProvider("LOCAL"); 
         userRepository.save(user);
     }
+    
+ // Implement hàm mới
+    @Override
+    public void updatePasswordWithOtp(String email, String otpCode, String newPassword) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new ResourceNotFoundException("Người dùng không tồn tại"));
+
+        // 1. Kiểm tra OTP
+        OtpToken token = otpTokenRepository.findByUserId(user.getId())
+                .orElseThrow(() -> new BadRequestException("Vui lòng yêu cầu gửi mã OTP trước."));
+
+        if (token.isExpired()) {
+            otpTokenRepository.delete(token);
+            throw new BadRequestException("Mã OTP đã hết hạn.");
+        }
+
+        if (!token.getOtpCode().equals(otpCode)) {
+            token.incrementRetry();
+            otpTokenRepository.save(token);
+            throw new BadRequestException("Mã OTP không chính xác.");
+        }
+
+        // 2. OTP đúng -> Xóa OTP & Cập nhật mật khẩu
+        otpTokenRepository.delete(token);
+        
+        user.setPassword(passwordEncoder.encode(newPassword));
+        // Luôn chuyển về LOCAL để đánh dấu user này giờ đã có mật khẩu quản lý được
+        user.setAuthProvider("LOCAL"); 
+        userRepository.save(user);
+        
+        log.info("User {} updated password via OTP", email);
+    }
 }

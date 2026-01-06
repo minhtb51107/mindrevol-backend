@@ -55,4 +55,6 @@ public interface AuthService {
     boolean hasPassword(String email);
     
     void createPassword(CreatePasswordRequest request, String email);
+
+	void updatePasswordWithOtp(String email, String otpCode, String newPassword);
 }

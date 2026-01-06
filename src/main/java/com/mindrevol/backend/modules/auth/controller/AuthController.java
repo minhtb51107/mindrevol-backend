@@ -32,6 +32,7 @@ import com.mindrevol.backend.modules.auth.dto.request.RegisterRequest;
 import com.mindrevol.backend.modules.auth.dto.request.ResetPasswordRequest;
 import com.mindrevol.backend.modules.auth.dto.request.SendOtpRequest;
 import com.mindrevol.backend.modules.auth.dto.request.TikTokLoginRequest;
+import com.mindrevol.backend.modules.auth.dto.request.UpdatePasswordOtpRequest;
 import com.mindrevol.backend.modules.auth.dto.request.VerifyOtpRequest;
 import com.mindrevol.backend.modules.auth.dto.response.JwtResponse;
 import com.mindrevol.backend.modules.auth.dto.response.UserSessionResponse;
@@ -222,5 +223,18 @@ public class AuthController {
             @AuthenticationPrincipal UserDetails userDetails) {
         authService.createPassword(request, userDetails.getUsername());
         return ResponseEntity.ok(ApiResponse.success("Đã thiết lập mật khẩu thành công."));
+    }
+    
+    @PostMapping("/update-password-otp")
+    @PreAuthorize("isAuthenticated()") // Bắt buộc user phải đang đăng nhập mới gọi được
+    public ResponseEntity<ApiResponse<Void>> updatePasswordWithOtp(
+            @Valid @RequestBody UpdatePasswordOtpRequest request,
+            @AuthenticationPrincipal UserDetails userDetails) {
+        
+        // Lấy email từ user đang đăng nhập (userDetails) để đảm bảo bảo mật
+        // Không cho phép user A đổi pass của user B
+        authService.updatePasswordWithOtp(userDetails.getUsername(), request.getOtp(), request.getNewPassword());
+        
+        return ResponseEntity.ok(ApiResponse.success("Cập nhật mật khẩu thành công!"));
     }
 }

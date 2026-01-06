@@ -44,6 +44,10 @@ public class JourneyMapper {
                 .inviterName(invitation.getInviter().getFullname())
                 .inviterAvatar(invitation.getInviter().getAvatarUrl())
                 .status(invitation.getStatus())
+                
+                // [MỚI] Map trạng thái hành trình
+                .journeyStatus(invitation.getJourney().getStatus()) 
+                
                 .sentAt(invitation.getCreatedAt())
                 .build();
     }

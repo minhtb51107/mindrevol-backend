@@ -13,17 +13,26 @@ import org.springframework.stereotype.Repository;
 import java.util.Optional;
 
 @Repository
-public interface JourneyInvitationRepository extends JpaRepository<JourneyInvitation, String> { // [UUID]
+public interface JourneyInvitationRepository extends JpaRepository<JourneyInvitation, String> {
 
-    // [UUID] String journeyId, String inviteeId
     boolean existsByJourneyIdAndInviteeIdAndStatus(String journeyId, String inviteeId, JourneyInvitationStatus status);
 
-    // [UUID] userId là String
-    @Query("SELECT ji FROM JourneyInvitation ji WHERE ji.invitee.id = :userId AND ji.status = 'PENDING' ORDER BY ji.createdAt DESC")
+    // 1. Query lấy danh sách (Đã sửa ở bước trước)
+    @Query("SELECT ji FROM JourneyInvitation ji " +
+           "WHERE ji.invitee.id = :userId " +
+           "AND ji.status = 'PENDING' " +
+           "AND ji.journey.status IN ('ACTIVE', 'ONGOING', 'UPCOMING') " +
+           "ORDER BY ji.createdAt DESC")
     @EntityGraph(attributePaths = {"journey", "inviter"})
     Page<JourneyInvitation> findPendingInvitationsForUser(@Param("userId") String userId, Pageable pageable);
     
     Optional<JourneyInvitation> findByIdAndInviteeId(String id, String inviteeId);
 
-	long countByInviteeIdAndStatus(String userId, JourneyInvitationStatus pending);
+    // [FIX QUAN TRỌNG] Sửa hàm đếm này thành @Query tùy chỉnh
+    // Thay vì để JPA tự gen câu SQL đơn giản, ta ép nó phải check trạng thái hành trình
+    @Query("SELECT COUNT(ji) FROM JourneyInvitation ji " +
+           "WHERE ji.invitee.id = :userId " +
+           "AND ji.status = :status " +
+           "AND ji.journey.status IN ('ACTIVE', 'ONGOING', 'UPCOMING')")
+    long countByInviteeIdAndStatus(@Param("userId") String userId, @Param("status") JourneyInvitationStatus status);
 }
