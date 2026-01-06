@@ -55,9 +55,21 @@ public class JourneyServiceImpl implements JourneyService {
     private final CheckinRepository checkinRepository;
     private final CheckinMapper checkinMapper;
 
+    // [FIX ANTI-PATTERN] Hàm này chỉ cập nhật trạng thái object trong RAM để logic hiển thị đúng, KHÔNG lưu xuống DB
+    private void updateJourneyStatusInMemory(Journey journey) {
+        if (journey.getStatus() == JourneyStatus.ONGOING && 
+            journey.getEndDate() != null && 
+            journey.getEndDate().isBefore(LocalDate.now())) {
+            
+            // Chỉ set trong memory
+            journey.setStatus(JourneyStatus.COMPLETED);
+            // KHÔNG gọi journeyRepository.save(journey) ở đây để tránh lỗi side-effect trong Transaction Read-Only
+        }
+    }
+
     // --- 1. LẤY HÀNH TRÌNH ACTIVE (READ-ONLY) ---
     @Override
-    @Transactional(readOnly = true) // [TỐI ƯU] Transaction chỉ đọc
+    @Transactional(readOnly = true)
     public List<UserActiveJourneyResponse> getUserActiveJourneys(String userId) {
         if (!userRepository.existsById(userId)) {
             throw new ResourceNotFoundException("User not found");
@@ -65,19 +77,15 @@ public class JourneyServiceImpl implements JourneyService {
 
         List<JourneyParticipant> participants = participantRepository.findAllActiveByUserId(userId);
         List<JourneyParticipant> validParticipants = new ArrayList<>();
-        LocalDate today = LocalDate.now();
 
         for (JourneyParticipant p : participants) {
             Journey j = p.getJourney();
             
-            // [FIX ANTI-PATTERN] Chỉ kiểm tra logic để hiển thị, KHÔNG GHI DB (Save) tại đây.
-            // Việc update status DB đã có JourneyCleanupJob lo vào cuối ngày.
-            if (j.getStatus() == JourneyStatus.ONGOING && 
-                j.getEndDate() != null && 
-                j.getEndDate().isBefore(today)) {
-                
-                // Nếu hành trình đã hết hạn nhưng Job chưa chạy, ta chỉ cần ẩn nó khỏi danh sách Active
-                // chứ không thực hiện transaction update ở đây để tránh side-effect.
+            // [FIX] Cập nhật status trên RAM để kiểm tra
+            updateJourneyStatusInMemory(j);
+
+            // Nếu nó đã thành COMPLETED (dù trong DB vẫn là ONGOING), ta bỏ qua nó ở list Active
+            if (j.getStatus() == JourneyStatus.COMPLETED) {
                 continue; 
             }
             validParticipants.add(p);
@@ -96,21 +104,16 @@ public class JourneyServiceImpl implements JourneyService {
 
         List<JourneyParticipant> allParticipants = participantRepository.findAllByUserId(userId);
         List<JourneyParticipant> finishedParticipants = new ArrayList<>();
-        LocalDate today = LocalDate.now();
 
         for (JourneyParticipant p : allParticipants) {
             Journey j = p.getJourney();
             
+            // [FIX] Cập nhật status trên RAM để kiểm tra
+            updateJourneyStatusInMemory(j);
+            
             if (j.getStatus() == JourneyStatus.COMPLETED) {
                 finishedParticipants.add(p);
             } 
-            // [FIX] Hiển thị cả những cái đã quá hạn mà Job chưa kịp quét thành COMPLETED
-            else if (j.getStatus() == JourneyStatus.ONGOING && 
-                     j.getEndDate() != null && 
-                     j.getEndDate().isBefore(today)) {
-                // Coi như nó đã xong để hiển thị đúng tab
-                finishedParticipants.add(p);
-            }
         }
 
         return mapToUserJourneyResponse(finishedParticipants, userId);
@@ -184,17 +187,6 @@ public class JourneyServiceImpl implements JourneyService {
         return userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
 
-    // Helper này chỉ dùng khi có tác động ghi (Join/Detail), không dùng trong List GET
-    private void checkAndCompleteExpiredJourney(Journey journey) {
-        if (journey.getStatus() == JourneyStatus.ONGOING && 
-            journey.getEndDate() != null && 
-            journey.getEndDate().isBefore(LocalDate.now())) {
-            
-            journey.setStatus(JourneyStatus.COMPLETED);
-            journeyRepository.save(journey);
-        }
-    }
-
     @Override
     @Transactional
     public JourneyResponse createJourney(CreateJourneyRequest request, String userId) {
@@ -230,13 +222,24 @@ public class JourneyServiceImpl implements JourneyService {
     }
 
     @Override
-    @Transactional
+    @Transactional // Transaction này sẽ giữ Lock DB để xử lý Race Condition
     public JourneyResponse joinJourney(String inviteCode, String userId) {
         User currentUser = getUserEntity(userId);
-        Journey journey = journeyRepository.findByInviteCode(inviteCode).orElseThrow(() -> new ResourceNotFoundException("Mã mời không hợp lệ"));
-        checkAndCompleteExpiredJourney(journey);
+        
+        // 1. Tìm thông tin cơ bản trước để lấy ID
+        Journey journeyInfo = journeyRepository.findByInviteCode(inviteCode)
+                .orElseThrow(() -> new ResourceNotFoundException("Mã mời không hợp lệ"));
+        
+        // 2. [FIX CONCURRENCY] Lock row hành trình lại bằng ID. 
+        // Các luồng khác sẽ phải đợi ở dòng này cho đến khi luồng này xong transaction.
+        Journey journey = journeyRepository.findByIdWithLock(journeyInfo.getId())
+                .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
+
+        // 3. Logic kiểm tra hạn (In memory)
+        updateJourneyStatusInMemory(journey);
         
         if (journey.getStatus() == JourneyStatus.COMPLETED) throw new BadRequestException("Hành trình đã kết thúc.");
+        
         if (participantRepository.existsByJourneyIdAndUserId(journey.getId(), userId)) return getJourneyDetail(userId, journey.getId());
 
         if (journey.isRequireApproval()) {
@@ -245,6 +248,7 @@ public class JourneyServiceImpl implements JourneyService {
             return mapToResponse(journey, null, "PENDING");
         }
 
+        // 4. [AN TOÀN] Validate Capacity bây giờ đã an toàn tuyệt đối nhờ Lock
         validateJourneyCapacity(journey);
 
         JourneyParticipant member = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.MEMBER).joinedAt(LocalDateTime.now()).build();
@@ -256,7 +260,10 @@ public class JourneyServiceImpl implements JourneyService {
     @Override
     public JourneyResponse getJourneyDetail(String userId, String journeyId) {
         Journey journey = getJourneyEntity(journeyId);
-        checkAndCompleteExpiredJourney(journey);
+        
+        // [FIX] Cập nhật status trên RAM
+        updateJourneyStatusInMemory(journey);
+        
         JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journeyId, userId).orElse(null);
         String pendingStatus = null;
         if (participant == null && journey.isRequireApproval()) {
@@ -270,7 +277,11 @@ public class JourneyServiceImpl implements JourneyService {
     @Transactional(readOnly = true)
     public List<JourneyResponse> getMyJourneys(String userId) {
         List<JourneyResponse> joined = participantRepository.findAllByUserId(userId).stream()
-                .map(p -> { checkAndCompleteExpiredJourney(p.getJourney()); return mapToResponse(p.getJourney(), p, null); })
+                .map(p -> { 
+                    // [FIX] Cập nhật status trên RAM
+                    updateJourneyStatusInMemory(p.getJourney()); 
+                    return mapToResponse(p.getJourney(), p, null); 
+                })
                 .collect(Collectors.toList());
         List<JourneyResponse> pending = journeyRequestRepository.findAllByUserIdAndStatus(userId, RequestStatus.PENDING).stream()
                 .map(req -> mapToResponse(req.getJourney(), null, "PENDING"))
