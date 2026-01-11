@@ -7,7 +7,7 @@
         <appender-ref ref="CONSOLE"/>
     </root>
 
-    <springProfile name="prod">
+    <springProfile name="monitoring">
         <appender name="LOKI" class="com.github.loki4j.logback.Loki4jAppender">
             <http>
                 <url>${LOKI_URL}</url>
@@ -24,7 +24,9 @@
                     <pattern>l=%level c=%logger{20} t=%thread | %msg %ex</pattern>
                 </message>
             </format>
-        </appender>
+            
+            <batchSize>50</batchSize>
+            <sendQueueMaxBytes>5000000</sendQueueMaxBytes> </appender>
 
         <root level="INFO">
             <appender-ref ref="LOKI"/>

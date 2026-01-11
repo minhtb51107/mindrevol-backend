@@ -3,6 +3,7 @@ package com.mindrevol.backend.config;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
+import org.redisson.config.SingleServerConfig;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,7 +20,6 @@ public class RedissonConfig {
     @Value("${spring.data.redis.password}")
     private String redisPassword;
 
-    // Lấy cờ SSL từ file properties (Prod = true, Dev = false)
     @Value("${spring.data.redis.ssl.enabled:false}")
     private boolean sslEnabled;
 
@@ -27,16 +27,25 @@ public class RedissonConfig {
     public RedissonClient redissonClient() {
         Config config = new Config();
         
-        // 1. Chọn giao thức đúng (rediss cho Upstash, redis cho Local)
+        // Xác định giao thức
         String protocol = sslEnabled ? "rediss" : "redis";
-        
-        // 2. Cấu hình địa chỉ
-        config.useSingleServer()
-              .setAddress(protocol + "://" + redisHost + ":" + redisPort);
+        String address = protocol + "://" + redisHost + ":" + redisPort;
 
-        // 3. Cấu hình mật khẩu (Quan trọng)
+        // Cấu hình Single Server (Upstash là single endpoint)
+        SingleServerConfig serverConfig = config.useSingleServer()
+              .setAddress(address)
+              // [QUAN TRỌNG] Tăng Timeout để tránh lỗi mạng chập chờn
+              .setConnectTimeout(30000)  // 30 giây (mặc định 10s)
+              .setTimeout(30000)         // 30 giây chờ phản hồi lệnh
+              .setRetryAttempts(3)       // Thử lại 3 lần nếu lỗi
+              .setRetryInterval(1500)    // Chờ 1.5s giữa các lần thử
+              
+              // [QUAN TRỌNG] Giữ kết nối với Upstash để không bị "ngủ đông"
+              .setPingConnectionInterval(10000) // Ping mỗi 10 giây
+              .setKeepAlive(true);              // Bật TCP KeepAlive
+
         if (redisPassword != null && !redisPassword.isEmpty()) {
-            config.useSingleServer().setPassword(redisPassword);
+            serverConfig.setPassword(redisPassword);
         }
 
         return Redisson.create(config);

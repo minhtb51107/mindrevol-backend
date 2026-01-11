@@ -1,10 +1,12 @@
 package com.mindrevol.backend.common.dto;
 
+import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.slf4j.MDC;
 
 import java.time.LocalDateTime;
 
@@ -12,21 +14,28 @@ import java.time.LocalDateTime;
 @Builder
 @NoArgsConstructor
 @AllArgsConstructor
-@JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonInclude(JsonInclude.Include.NON_NULL) // Bỏ qua các trường null để JSON gọn nhẹ
 public class ApiResponse<T> {
 
-    private int status;
-    private String message;
+    private int status;       // HTTP Status Code (200, 400, 500...)
+    private String message;   // Message cho End-user (VD: "Thành công")
+    private String errorCode; // Mã lỗi cho Dev/System (VD: USER_NOT_FOUND)
     
-    // --- THÊM MỚI ---
-    private String errorCode; // Mã lỗi máy đọc (VD: USER_NOT_FOUND)
-    // ----------------
-    
-    private T data;
+    // [NÂNG CẤP] Trace ID để truy vết lỗi trong Log (khớp với MdcLoggingFilter)
+    private String traceId; 
 
+    // [NÂNG CẤP] Format ngày giờ chuẩn ISO 8601 để Frontend dễ parse
     @Builder.Default
+    @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS")
     private LocalDateTime timestamp = LocalDateTime.now();
 
+    private T data; // Dữ liệu chính
+
+    // ========================================================================
+    //  STATIC FACTORY METHODS (Tiện ích để gọi nhanh)
+    // ========================================================================
+
+    // 1. Thành công - Có dữ liệu
     public static <T> ApiResponse<T> success(T data) {
         return ApiResponse.<T>builder()
                 .status(200)
@@ -35,6 +44,7 @@ public class ApiResponse<T> {
                 .build();
     }
     
+    // 2. Thành công - Có dữ liệu + Message tùy chỉnh
     public static <T> ApiResponse<T> success(T data, String message) {
         return ApiResponse.<T>builder()
                 .status(200)
@@ -43,6 +53,7 @@ public class ApiResponse<T> {
                 .build();
     }
 
+    // 3. Thành công - Chỉ có Message (VD: Xóa, Update status)
     public static <T> ApiResponse<T> success(String message) {
         return ApiResponse.<T>builder()
                 .status(200)
@@ -50,30 +61,34 @@ public class ApiResponse<T> {
                 .build();
     }
 
+    // 4. Lỗi - Cơ bản (Tự động lấy TraceID từ MDC)
     public static <T> ApiResponse<T> error(int status, String message, String errorCode) {
         return ApiResponse.<T>builder()
                 .status(status)
                 .message(message)
                 .errorCode(errorCode)
+                .traceId(MDC.get("requestId")) // [QUAN TRỌNG] Tự động lấy ID từ Filter
                 .build();
     }
     
-    // Giữ lại method cũ để tương thích ngược, mặc định errorCode là GENERAL_ERROR
-    public static <T> ApiResponse<T> error(int status, String message) {
-        return ApiResponse.<T>builder()
-                .status(status)
-                .message(message)
-                .errorCode("GENERAL_ERROR")
-                .build();
-    }
-    
-    // Method hỗ trợ trả về data kèm lỗi (ví dụ: validation errors)
+    // 5. Lỗi - Kèm dữ liệu (VD: Validation Errors trả về Map lỗi chi tiết)
     public static <T> ApiResponse<T> error(int status, String message, String errorCode, T data) {
         return ApiResponse.<T>builder()
                 .status(status)
                 .message(message)
                 .errorCode(errorCode)
                 .data(data)
+                .traceId(MDC.get("requestId"))
+                .build();
+    }
+
+    // 6. Lỗi - Tương thích ngược (Mặc định GENERAL_ERROR)
+    public static <T> ApiResponse<T> error(int status, String message) {
+        return ApiResponse.<T>builder()
+                .status(status)
+                .message(message)
+                .errorCode("GENERAL_ERROR")
+                .traceId(MDC.get("requestId"))
                 .build();
     }
 }

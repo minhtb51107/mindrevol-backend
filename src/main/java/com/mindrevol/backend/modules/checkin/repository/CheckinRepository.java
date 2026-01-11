@@ -34,14 +34,15 @@ public interface CheckinRepository extends JpaRepository<Checkin, String> {
     List<Checkin> findAllByUserIdOrderByCreatedAtDesc(String userId);
 
     // =========================================================================
-    //  PHẦN CORE: NEWSFEED & SOCIAL LOGIC (GIỮ NGUYÊN TỪ CODE CŨ CỦA BẠN)
+    //  PHẦN CORE: NEWSFEED & SOCIAL LOGIC (ĐÃ CẬP NHẬT FIX BUG)
     // =========================================================================
 
     // 6. Newsfeed tổng hợp: Lấy bài từ các hành trình mình tham gia + loại bỏ người mình block
+    // [UPDATE] Đổi < thành <= để bắt được bài viết vừa tạo ngay tức thì
     @Query("SELECT c FROM Checkin c " +
            "JOIN FETCH c.user u " +
            "WHERE c.journey.id IN (SELECT p.journey.id FROM JourneyParticipant p WHERE p.user.id = :userId) " +
-           "AND c.createdAt < :cursor " +
+           "AND c.createdAt <= :cursor " + 
            "AND u.id NOT IN :excludedUserIds " + 
            "ORDER BY c.createdAt DESC")
     List<Checkin> findUnifiedFeed(@Param("userId") String userId, 
@@ -50,10 +51,11 @@ public interface CheckinRepository extends JpaRepository<Checkin, String> {
                                   Pageable pageable);
 
     // 7. Feed của một hành trình cụ thể (có phân trang theo cursor)
+    // [UPDATE] Đổi < thành <= để bắt được bài viết vừa tạo ngay tức thì
     @Query("SELECT c FROM Checkin c " +
            "JOIN FETCH c.user u " +
            "WHERE c.journey.id = :journeyId " +
-           "AND c.createdAt < :cursor " +
+           "AND c.createdAt <= :cursor " + 
            "AND u.id NOT IN :excludedUserIds " + 
            "ORDER BY c.createdAt DESC")
     List<Checkin> findJourneyFeedByCursor(@Param("journeyId") String journeyId, 
@@ -62,7 +64,6 @@ public interface CheckinRepository extends JpaRepository<Checkin, String> {
                                           Pageable pageable);
     
     // 8. Lấy ngày check-in hợp lệ (cho Calendar View)
-    // Lưu ý: Đảm bảo CheckinStatus của bạn vẫn giữ các giá trị này, hoặc đổi thành 'ACTIVE' nếu đã tối giản.
     @Query("SELECT c.createdAt FROM Checkin c " +
             "WHERE c.journey.id = :journeyId " +
             "AND c.user.id = :userId " +
