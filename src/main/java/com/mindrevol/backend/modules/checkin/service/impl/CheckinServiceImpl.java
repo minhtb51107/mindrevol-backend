@@ -1,6 +1,6 @@
 package com.mindrevol.backend.modules.checkin.service.impl;
 
-import com.mindrevol.backend.common.constant.AppConstants; // [REFACTOR] Dùng Constant
+import com.mindrevol.backend.common.constant.AppConstants;
 import com.mindrevol.backend.common.event.CheckinSuccessEvent;
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
@@ -12,7 +12,7 @@ import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailR
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
 import com.mindrevol.backend.modules.checkin.entity.*;
-import com.mindrevol.backend.modules.checkin.event.CheckinDeletedEvent; // [REFACTOR] Event mới
+import com.mindrevol.backend.modules.checkin.event.CheckinDeletedEvent;
 import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
@@ -47,7 +47,6 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture; // Vẫn giữ để tham khảo hoặc dùng cho việc khác nếu cần, nhưng logic delete sẽ bỏ
 import java.util.stream.Collectors;
 
 @Service
@@ -130,7 +129,6 @@ public class CheckinServiceImpl implements CheckinService {
                 mediaType = MediaType.VIDEO;
                 
                 try {
-                    // [REFACTOR] Dùng Constant
                     FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_VIDEOS + journey.getId());
                     imageFileId = uploadResult.getFileId();
                     
@@ -147,12 +145,13 @@ public class CheckinServiceImpl implements CheckinService {
             else {
                 mediaType = MediaType.IMAGE;
                 
+                // [THAY ĐỔI CHIẾN LƯỢC] Vẫn lấy ngày (nếu có) để sort sau này, nhưng KHÔNG chặn
                 LocalDateTime exifDate = metadataService.getCreationDate(file);
                 
+                /* [TẠM TẮT] Logic chặn ảnh cũ để phù hợp với Web MVP & tránh lỗi UX khi browser xoá EXIF
                 if (exifDate != null) {
                     long diffMinutes = Duration.between(exifDate, LocalDateTime.now()).toMinutes();
                     
-                    // [REFACTOR] Dùng Constant
                     if (!currentUser.isPremium() && Math.abs(diffMinutes) > AppConstants.ALLOWED_PHOTO_AGE_MINUTES) {
                         throw new BadRequestException(
                             "Tài khoản thường chỉ được đăng ảnh chụp trong vòng " + AppConstants.ALLOWED_PHOTO_AGE_MINUTES + " phút. " +
@@ -160,9 +159,9 @@ public class CheckinServiceImpl implements CheckinService {
                         );
                     }
                 }
+                */
                 
                 try {
-                    // [REFACTOR] Dùng Constant
                     FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_IMAGES + journey.getId());
                     imageUrl = uploadResult.getUrl() + "?tr=w-1080,q-80"; 
                     imageFileId = uploadResult.getFileId();
@@ -184,6 +183,7 @@ public class CheckinServiceImpl implements CheckinService {
                                     imageUrl, videoUrl, imageFileId, mediaType, todayLocal);
     }
     
+    // ... (Giữ nguyên các method còn lại: saveCheckinTransaction, updateParticipantStats, getFeed, v.v...)
     @Transactional
     protected CheckinResponse saveCheckinTransaction(User currentUser, Journey journey, 
                                                    JourneyParticipant participant, 
@@ -387,8 +387,6 @@ public class CheckinServiceImpl implements CheckinService {
         checkinRepository.flush(); // Đảm bảo Hibernate gửi lệnh SQL Delete ngay
 
         // 2. [REFACTOR] Thay thế CompletableFuture bằng Event
-        // Logic cũ: CompletableFuture.runAsync(...) -> Nguy cơ file rác/mất link nếu DB rollback
-        // Logic mới: Bắn event, listener sẽ chỉ chạy khi Transaction COMMIT thành công.
         if (checkin.getImageFileId() != null) {
             eventPublisher.publishEvent(new CheckinDeletedEvent(checkin.getImageFileId()));
         }

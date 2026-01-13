@@ -4,6 +4,7 @@ import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.request.ReactionRequest;
+import com.mindrevol.backend.modules.checkin.dto.request.UpdateCheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
@@ -97,10 +98,15 @@ public class CheckinController {
     @PutMapping("/{checkinId}")
     public ResponseEntity<ApiResponse<CheckinResponse>> updateCheckin(
             @PathVariable String checkinId,
-            @RequestBody String caption) {
+            @RequestBody UpdateCheckinRequest request) { // [SỬA LỖI] Dùng DTO thay vì String
+        
         String userId = SecurityUtils.getCurrentUserId();
         User currentUser = userService.getUserById(userId);
-        return ResponseEntity.ok(ApiResponse.success(checkinService.updateCheckin(checkinId, caption, currentUser)));
+        
+        // Lấy caption từ request object
+        return ResponseEntity.ok(ApiResponse.success(
+            checkinService.updateCheckin(checkinId, request.getCaption(), currentUser)
+        ));
     }
 
     @DeleteMapping("/{checkinId}")

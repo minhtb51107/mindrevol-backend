@@ -21,5 +21,6 @@
     <include file="patches/015-remove-verification.xml" relativeToChangelogFile="true"/>
     <include file="patches/016-add-internal-ads.xml" relativeToChangelogFile="true"/>
     <include file="patches/017-add-tags-to-ads.xml" relativeToChangelogFile="true"/>
+    <include file="patches/018-remove-daily-limit.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>
