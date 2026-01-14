@@ -22,7 +22,6 @@ public interface JourneyRepository extends JpaRepository<Journey, String> {
 
     List<Journey> findByCreatorId(String creatorId);
 
-    // [FIX CONCURRENCY] Thêm hàm tìm kiếm có khóa (Lock) để chặn xung đột khi Join
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("SELECT j FROM Journey j WHERE j.id = :id")
     Optional<Journey> findByIdWithLock(@Param("id") String id);
@@ -34,9 +33,20 @@ public interface JourneyRepository extends JpaRepository<Journey, String> {
     @Query("UPDATE Journey j SET j.status = 'COMPLETED' WHERE j.status = 'ONGOING' AND j.endDate < :today")
     int updateExpiredJourneysStatus(@Param("today") LocalDate today);
 
+    // [FIX QUERY ACTIVE] Lấy hành trình còn hạn (endDate >= today)
     @Query("SELECT j FROM Journey j " +
            "JOIN JourneyParticipant jp ON j.id = jp.journey.id " +
            "WHERE jp.user.id = :userId " +
-           "AND j.status = 'COMPLETED'")
-    List<Journey> findCompletedJourneysByUserId(@Param("userId") String userId);
+           "AND (j.endDate IS NULL OR j.endDate >= :today) " +
+           "AND j.status <> 'ARCHIVED' " +
+           "ORDER BY j.createdAt DESC")
+    List<Journey> findActiveJourneysByUserId(@Param("userId") String userId, @Param("today") LocalDate today);
+
+    // [FIX QUERY COMPLETED] Lấy hành trình đã hết hạn (endDate < today)
+    @Query("SELECT j FROM Journey j " +
+           "JOIN JourneyParticipant jp ON j.id = jp.journey.id " +
+           "WHERE jp.user.id = :userId " +
+           "AND j.endDate < :today " +
+           "ORDER BY j.endDate DESC")
+    List<Journey> findCompletedJourneysByUserId(@Param("userId") String userId, @Param("today") LocalDate today);
 }

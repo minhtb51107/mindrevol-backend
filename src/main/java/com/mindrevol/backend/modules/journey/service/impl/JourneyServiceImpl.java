@@ -33,6 +33,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -55,15 +56,13 @@ public class JourneyServiceImpl implements JourneyService {
     private final CheckinRepository checkinRepository;
     private final CheckinMapper checkinMapper;
 
-    // [FIX ANTI-PATTERN] Hàm này chỉ cập nhật trạng thái object trong RAM để logic hiển thị đúng, KHÔNG lưu xuống DB
-    private void updateJourneyStatusInMemory(Journey journey) {
-        if (journey.getStatus() == JourneyStatus.ONGOING && 
-            journey.getEndDate() != null && 
-            journey.getEndDate().isBefore(LocalDate.now())) {
-            
-            // Chỉ set trong memory
-            journey.setStatus(JourneyStatus.COMPLETED);
-            // KHÔNG gọi journeyRepository.save(journey) ở đây để tránh lỗi side-effect trong Transaction Read-Only
+    // Helper: Lấy ngày hiện tại theo Timezone của User
+    private LocalDate getTodayInUserTimezone(User user) {
+        String tz = user.getTimezone() != null ? user.getTimezone() : "UTC";
+        try {
+            return LocalDate.now(ZoneId.of(tz));
+        } catch (Exception e) {
+            return LocalDate.now(ZoneId.of("UTC"));
         }
     }
 
@@ -71,88 +70,71 @@ public class JourneyServiceImpl implements JourneyService {
     @Override
     @Transactional(readOnly = true)
     public List<UserActiveJourneyResponse> getUserActiveJourneys(String userId) {
-        if (!userRepository.existsById(userId)) {
-            throw new ResourceNotFoundException("User not found");
-        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        List<JourneyParticipant> participants = participantRepository.findAllActiveByUserId(userId);
-        List<JourneyParticipant> validParticipants = new ArrayList<>();
-
-        for (JourneyParticipant p : participants) {
-            Journey j = p.getJourney();
-            
-            // [FIX] Cập nhật status trên RAM để kiểm tra
-            updateJourneyStatusInMemory(j);
-
-            // Nếu nó đã thành COMPLETED (dù trong DB vẫn là ONGOING), ta bỏ qua nó ở list Active
-            if (j.getStatus() == JourneyStatus.COMPLETED) {
-                continue; 
-            }
-            validParticipants.add(p);
-        }
-
-        return mapToUserJourneyResponse(validParticipants, userId);
+        LocalDate today = getTodayInUserTimezone(user);
+        
+        // [FIX] Sử dụng query tối ưu trong Repository
+        List<Journey> activeJourneys = journeyRepository.findActiveJourneysByUserId(userId, today);
+        
+        return activeJourneys.stream().map(journey -> {
+            JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
+            return mapSingleJourneyToResponse(journey, p, userId);
+        }).collect(Collectors.toList());
     }
 
     // --- 2. LẤY HÀNH TRÌNH FINISHED (READ-ONLY) ---
     @Override
     @Transactional(readOnly = true)
     public List<UserActiveJourneyResponse> getUserFinishedJourneys(String userId) {
-        if (!userRepository.existsById(userId)) {
-            throw new ResourceNotFoundException("User not found");
-        }
+        User user = userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        List<JourneyParticipant> allParticipants = participantRepository.findAllByUserId(userId);
-        List<JourneyParticipant> finishedParticipants = new ArrayList<>();
+        LocalDate today = getTodayInUserTimezone(user);
 
-        for (JourneyParticipant p : allParticipants) {
-            Journey j = p.getJourney();
-            
-            // [FIX] Cập nhật status trên RAM để kiểm tra
-            updateJourneyStatusInMemory(j);
-            
-            if (j.getStatus() == JourneyStatus.COMPLETED) {
-                finishedParticipants.add(p);
-            } 
-        }
+        // [FIX] Sử dụng query tối ưu
+        List<Journey> completedJourneys = journeyRepository.findCompletedJourneysByUserId(userId, today);
 
-        return mapToUserJourneyResponse(finishedParticipants, userId);
+        return completedJourneys.stream().map(journey -> {
+            JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
+            return mapSingleJourneyToResponse(journey, p, userId);
+        }).collect(Collectors.toList());
     }
 
-    private List<UserActiveJourneyResponse> mapToUserJourneyResponse(List<JourneyParticipant> participants, String userId) {
-        return participants.stream().map(participant -> {
-            Journey journey = participant.getJourney();
-            
-            List<Checkin> myCheckins = checkinRepository.findByJourneyIdAndUserId(journey.getId(), userId);
-            List<CheckinResponse> checkinResponses = myCheckins.stream()
-                    .sorted(Comparator.comparing(Checkin::getCreatedAt).reversed())
-                    .map(checkinMapper::toResponse)
-                    .collect(Collectors.toList());
+    // Helper mapping mới để tránh duplicate code
+    private UserActiveJourneyResponse mapSingleJourneyToResponse(Journey journey, JourneyParticipant participant, String userId) {
+        List<Checkin> myCheckins = checkinRepository.findByJourneyIdAndUserId(journey.getId(), userId);
+        List<CheckinResponse> checkinResponses = myCheckins.stream()
+                .sorted(Comparator.comparing(Checkin::getCreatedAt).reversed())
+                .map(checkinMapper::toResponse)
+                .collect(Collectors.toList());
 
-            boolean hasNewUpdates = false;
-            Pageable limitOne = PageRequest.of(0, 1);
-            var latestPage = checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journey.getId(), limitOne);
-            
-            if (latestPage.hasContent()) {
-                Checkin latestCheckin = latestPage.getContent().get(0);
-                if (!latestCheckin.getUser().getId().equals(userId)) {
-                    hasNewUpdates = true;
-                }
+        boolean hasNewUpdates = false;
+        Pageable limitOne = PageRequest.of(0, 1);
+        var latestPage = checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journey.getId(), limitOne);
+        
+        if (latestPage.hasContent()) {
+            Checkin latestCheckin = latestPage.getContent().get(0);
+            if (!latestCheckin.getUser().getId().equals(userId)) {
+                hasNewUpdates = true;
             }
+        }
 
-            return UserActiveJourneyResponse.builder()
-                    .id(journey.getId())
-                    .name(journey.getName())
-                    .description(journey.getDescription())
-                    .status(journey.getStatus().name())
-                    .visibility(journey.getVisibility().name())
-                    .startDate(journey.getStartDate())
-                    .endDate(journey.getEndDate())
-                    .totalCheckins(participant.getTotalCheckins())
-                    .checkins(checkinResponses)
-                    .hasNewUpdates(hasNewUpdates)
-                    .build();
-        }).collect(Collectors.toList());
+        int totalCheckins = participant != null ? participant.getTotalCheckins() : 0;
+
+        return UserActiveJourneyResponse.builder()
+                .id(journey.getId())
+                .name(journey.getName())
+                .description(journey.getDescription())
+                .status(journey.getStatus().name())
+                .visibility(journey.getVisibility().name())
+                .startDate(journey.getStartDate())
+                .endDate(journey.getEndDate())
+                .totalCheckins(totalCheckins)
+                .checkins(checkinResponses)
+                .hasNewUpdates(hasNewUpdates)
+                .build();
     }
 
     @Override
@@ -191,7 +173,11 @@ public class JourneyServiceImpl implements JourneyService {
     @Transactional
     public JourneyResponse createJourney(CreateJourneyRequest request, String userId) {
         User currentUser = getUserEntity(userId);
-        long activeCount = participantRepository.countActiveByUserId(userId); 
+        
+        // [FIX LOGIC COUNT] Truyền ngày hiện tại vào để đếm chính xác
+        LocalDate today = getTodayInUserTimezone(currentUser);
+        long activeCount = participantRepository.countActiveByUserId(userId, today); 
+        
         int limit = currentUser.isPremium() ? AppConstants.MAX_ACTIVE_JOURNEYS_GOLD : AppConstants.MAX_ACTIVE_JOURNEYS_FREE;
         
         if (activeCount >= limit) {
@@ -199,7 +185,7 @@ public class JourneyServiceImpl implements JourneyService {
         }
 
         if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) {
-            throw new BadRequestException("Ngày kết thúc phải sau ngày bắt đầu");
+            throw new BadRequestException("Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");
         }
 
         Journey journey = Journey.builder()
@@ -222,23 +208,20 @@ public class JourneyServiceImpl implements JourneyService {
     }
 
     @Override
-    @Transactional // Transaction này sẽ giữ Lock DB để xử lý Race Condition
+    @Transactional 
     public JourneyResponse joinJourney(String inviteCode, String userId) {
         User currentUser = getUserEntity(userId);
         
-        // 1. Tìm thông tin cơ bản trước để lấy ID
         Journey journeyInfo = journeyRepository.findByInviteCode(inviteCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Mã mời không hợp lệ"));
         
-        // 2. [FIX CONCURRENCY] Lock row hành trình lại bằng ID. 
-        // Các luồng khác sẽ phải đợi ở dòng này cho đến khi luồng này xong transaction.
         Journey journey = journeyRepository.findByIdWithLock(journeyInfo.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
 
-        // 3. Logic kiểm tra hạn (In memory)
-        updateJourneyStatusInMemory(journey);
-        
-        if (journey.getStatus() == JourneyStatus.COMPLETED) throw new BadRequestException("Hành trình đã kết thúc.");
+        LocalDate today = getTodayInUserTimezone(currentUser);
+        if (journey.getEndDate() != null && journey.getEndDate().isBefore(today)) {
+             throw new BadRequestException("Hành trình đã kết thúc.");
+        }
         
         if (participantRepository.existsByJourneyIdAndUserId(journey.getId(), userId)) return getJourneyDetail(userId, journey.getId());
 
@@ -248,7 +231,6 @@ public class JourneyServiceImpl implements JourneyService {
             return mapToResponse(journey, null, "PENDING");
         }
 
-        // 4. [AN TOÀN] Validate Capacity bây giờ đã an toàn tuyệt đối nhờ Lock
         validateJourneyCapacity(journey);
 
         JourneyParticipant member = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.MEMBER).joinedAt(LocalDateTime.now()).build();
@@ -260,9 +242,6 @@ public class JourneyServiceImpl implements JourneyService {
     @Override
     public JourneyResponse getJourneyDetail(String userId, String journeyId) {
         Journey journey = getJourneyEntity(journeyId);
-        
-        // [FIX] Cập nhật status trên RAM
-        updateJourneyStatusInMemory(journey);
         
         JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journeyId, userId).orElse(null);
         String pendingStatus = null;
@@ -277,15 +256,13 @@ public class JourneyServiceImpl implements JourneyService {
     @Transactional(readOnly = true)
     public List<JourneyResponse> getMyJourneys(String userId) {
         List<JourneyResponse> joined = participantRepository.findAllByUserId(userId).stream()
-                .map(p -> { 
-                    // [FIX] Cập nhật status trên RAM
-                    updateJourneyStatusInMemory(p.getJourney()); 
-                    return mapToResponse(p.getJourney(), p, null); 
-                })
+                .map(p -> mapToResponse(p.getJourney(), p, null))
                 .collect(Collectors.toList());
+        
         List<JourneyResponse> pending = journeyRequestRepository.findAllByUserIdAndStatus(userId, RequestStatus.PENDING).stream()
                 .map(req -> mapToResponse(req.getJourney(), null, "PENDING"))
                 .collect(Collectors.toList());
+        
         List<JourneyResponse> all = new ArrayList<>(joined);
         all.addAll(pending);
         return all;

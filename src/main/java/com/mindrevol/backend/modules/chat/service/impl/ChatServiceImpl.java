@@ -55,7 +55,7 @@ public class ChatServiceImpl implements ChatService {
         User sender = userRepository.getReferenceById(senderId);
         User receiver = userRepository.getReferenceById(receiverId);
 
-        // [FIX] Kiểm tra hội thoại đã tồn tại chưa
+        // Kiểm tra hội thoại đã tồn tại chưa
         List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
         Conversation conversation;
         if (existingConvs.isEmpty()) {
@@ -87,11 +87,10 @@ public class ChatServiceImpl implements ChatService {
 
         MessageResponse response = chatMapper.toResponse(message);
 
-        messagingTemplate.convertAndSendToUser(
-                receiverId, 
-                "/queue/messages",
-                response
-        );
+        // [FIX REALTIME] Gửi vào Topic chung của Conversation.
+        // Frontend (cả người gửi và nhận) sẽ subscribe vào /topic/chat.{id}
+        String destination = "/topic/chat." + conversation.getId();
+        messagingTemplate.convertAndSend(destination, response);
 
         return response;
     }
@@ -112,35 +111,14 @@ public class ChatServiceImpl implements ChatService {
     public List<ConversationResponse> getUserConversations(String userId) { 
         List<Conversation> conversations = conversationRepository.findValidConversationsByUserId(userId);
 
-        return conversations.stream().map(conv -> {
-            User partnerEntity = conv.getUser1().getId().equals(userId) ? conv.getUser2() : conv.getUser1();
-            boolean isOnline = userPresenceService.isUserOnline(partnerEntity.getId());
-
-            UserSummaryResponse partnerDto = UserSummaryResponse.builder()
-                .id(partnerEntity.getId())
-                .fullname(partnerEntity.getFullname())
-                .avatarUrl(partnerEntity.getAvatarUrl())
-                .handle(partnerEntity.getHandle())
-                .isOnline(isOnline)
-                .build();
-
-            long unread = messageRepository.countUnreadMessages(conv.getId(), userId);
-
-            return ConversationResponse.builder()
-                    .id(conv.getId())
-                    .partner(partnerDto)
-                    .lastMessageContent(conv.getLastMessageContent())
-                    .lastMessageAt(conv.getLastMessageAt())
-                    .lastSenderId(conv.getLastSenderId())
-                    .unreadCount(unread)
-                    .status(conv.getStatus() != null ? conv.getStatus().name() : "ACTIVE")
-                    .build();
-        }).collect(Collectors.toList());
+        return conversations.stream().map(conv -> mapToConversationResponse(conv, userId)).collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable) { 
+        // Lưu ý: Backend vẫn trả về DESC (mới nhất trước) để phân trang đúng.
+        // Frontend sẽ chịu trách nhiệm đảo ngược lại để hiển thị.
         return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 .map(chatMapper::toResponse);
     }
@@ -227,7 +205,6 @@ public class ChatServiceImpl implements ChatService {
         User sender = userRepository.getReferenceById(senderId);
         User receiver = userRepository.getReferenceById(receiverId);
 
-        // [FIX] Xử lý duplicate conversation
         List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
         Conversation conversation;
         

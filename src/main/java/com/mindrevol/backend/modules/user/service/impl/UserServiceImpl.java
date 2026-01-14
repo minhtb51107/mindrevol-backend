@@ -35,6 +35,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -93,24 +95,16 @@ public class UserServiceImpl implements UserService {
     public UserProfileResponse updateProfile(String currentEmail, UpdateProfileRequest request, MultipartFile file) {
         User user = getUserByEmail(currentEmail);
         
-        // 1. Nếu có file ảnh gửi lên thì upload
         if (file != null && !file.isEmpty()) {
             try {
-                // [FIX] Sử dụng DTO FileUploadResult trả về từ service
                 FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, "avatars/" + user.getId());
-                
-                // Lấy URL từ kết quả upload
                 user.setAvatarUrl(uploadResult.getUrl());
-                
-                // (Optional) Nếu sau này User có trường avatarFileId thì set ở đây:
-                // user.setAvatarFileId(uploadResult.getFileId());
             } catch (Exception e) {
                 log.error("Failed to upload avatar", e);
                 throw new BadRequestException("Lỗi khi tải lên ảnh đại diện: " + e.getMessage());
             }
         }
 
-        // 2. Xử lý các trường text
         if (request.getFullname() != null) request.setFullname(sanitizationService.sanitizeStrict(request.getFullname()));
         if (request.getBio() != null) request.setBio(sanitizationService.sanitizeRichText(request.getBio()));
         
@@ -152,7 +146,6 @@ public class UserServiceImpl implements UserService {
     public void deleteMyAccount(String userId) { 
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         long timestamp = System.currentTimeMillis();
-        // Soft delete bằng cách đổi info tránh trùng lặp sau này
         user.setEmail(user.getEmail() + "_deleted_" + timestamp);
         user.setHandle(user.getHandle() + "_deleted_" + timestamp);
         userRepository.save(user);
@@ -167,7 +160,6 @@ public class UserServiceImpl implements UserService {
     public UserDataExport exportMyData(String userId) { 
         User user = getUserById(userId);
 
-        // Chỉ export Checkin và Friend, bỏ Habit/Badge
         var checkins = checkinRepository.findAllByUserIdOrderByCreatedAtDesc(userId).stream()
                 .map(checkinMapper::toResponse).collect(Collectors.toList());
 
@@ -198,13 +190,25 @@ public class UserServiceImpl implements UserService {
                 .collect(Collectors.toList());
     }
 
+    // Helper: Lấy ngày hiện tại theo Timezone của User
+    private LocalDate getTodayInUserTimezone(User user) {
+        String tz = user.getTimezone() != null ? user.getTimezone() : "UTC";
+        try {
+            return LocalDate.now(ZoneId.of(tz));
+        } catch (Exception e) {
+            return LocalDate.now(ZoneId.of("UTC"));
+        }
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<JourneyResponse> getUserRecaps(String userId) { 
-        if (!userRepository.existsById(userId)) {
-            throw new ResourceNotFoundException("User not found");
-        }
-        List<Journey> completedJourneys = journeyRepository.findCompletedJourneysByUserId(userId);
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        
+        // [FIX] Lấy ngày hiện tại theo múi giờ của user để truyền vào repository
+        LocalDate today = getTodayInUserTimezone(user);
+        
+        List<Journey> completedJourneys = journeyRepository.findCompletedJourneysByUserId(userId, today);
         return completedJourneys.stream()
                 .map(journeyMapper::toResponse)
                 .collect(Collectors.toList());
