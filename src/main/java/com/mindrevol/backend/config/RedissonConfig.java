@@ -41,20 +41,19 @@ public class RedissonConfig {
               .setRetryAttempts(3)
               .setRetryInterval(1500)
               
-              // [QUAN TRỌNG - SỬA LỖI TỐN QUOTA]
-              // Tăng thời gian ping lên 60 giây (Thay vì 10s/20s)
-              // Tính toán: 1 phút 1 lần * 60 * 24 * 30 = 43,200 lệnh/tháng/kết nối (An toàn)
+              // [QUAN TRỌNG] Ping mỗi 60s để giữ kết nối mà không tốn Quota Upstash
               .setPingConnectionInterval(60000) 
               .setKeepAlive(true)
 
-              // [QUAN TRỌNG - TIẾT KIỆM RAM & QUOTA]
-              // Chỉ cho phép tối đa 2 kết nối (Đủ cho app nhỏ, tiết kiệm lệnh ping)
-              .setConnectionPoolSize(2)
+              // --- [CẤU HÌNH CÂN BẰNG GIỮA HIỆU NĂNG VÀ RAM] ---
+              // [FIX] Tăng từ 2 lên 8. 
+              // Lý do: Cần đủ kết nối cho các Worker chạy nền (BLPOP) + Request từ người dùng.
+              // 8 kết nối vẫn an toàn cho RAM 512MB nếu đã giới hạn Heap Size.
+              .setConnectionPoolSize(8)
               
-              // Chỉ giữ 1 kết nối khi rảnh
-              .setConnectionMinimumIdleSize(1)
+              // Giữ tối thiểu 2 kết nối sẵn sàng (thay vì 1) để phản hồi nhanh hơn
+              .setConnectionMinimumIdleSize(2)
               
-              // Kiểm tra DNS ít hơn (mỗi 1 phút) để đỡ tốn CPU
               .setDnsMonitoringInterval(60000);
 
         if (redisPassword != null && !redisPassword.isEmpty()) {
