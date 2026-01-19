@@ -28,4 +28,5 @@ EXPOSE 8080
 # -XX:+UseSerialGC: Dùng bộ dọn rác đơn luồng (nhẹ nhất cho CPU/RAM thấp).
 # -Xss256k: Giảm dung lượng stack mỗi luồng (mặc định 1MB -> 256KB) để tiết kiệm RAM khi có nhiều request.
 # -XX:MaxMetaspaceSize=100m: Giới hạn bộ nhớ chứa class metadata.
-ENTRYPOINT ["java", "-Xms128m", "-Xmx180m", "-XX:+UseSerialGC", "-Xss256k", "-XX:MaxMetaspaceSize=100m", "-jar", "app.jar"]
+# Giảm Heap xuống 130MB (đủ cho app chạy), Tăng Metaspace lên 200MB (để load đủ thư viện)
+ENTRYPOINT ["java", "-Xms130m", "-Xmx130m", "-XX:+UseSerialGC", "-Xss256k", "-XX:MaxMetaspaceSize=200m", "-jar", "app.jar"]
