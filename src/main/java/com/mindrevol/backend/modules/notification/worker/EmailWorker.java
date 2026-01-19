@@ -61,27 +61,30 @@ public class EmailWorker {
             try {
                 if (redissonClient.isShutdown()) break;
 
-                // [FIX QUAN TRỌNG] Thay take() bằng poll(5 giây)
-                // Lý do: take() sẽ chờ mãi mãi. Nếu Upstash ngắt kết nối, thread này sẽ bị treo vĩnh viễn.
-                // poll() sẽ nhả ra sau 5s để thread có cơ hội kiểm tra lại trạng thái mạng/shutdown.
-                EmailTask task = queue.poll(5, TimeUnit.SECONDS);
+                // [FIX FINAL] KHÔNG dùng poll có thời gian chờ (BLPOP) nữa vì Upstash hay cắt kết nối.
+                // Dùng poll() thường: Trả về ngay lập tức.
+                EmailTask task = queue.poll(); 
 
                 if (task != null) {
+                    // Có mail -> Gửi ngay
                     handleTask(task, queue);
+                } else {
+                    // Không có mail -> Đi ngủ 2 giây rồi dậy check tiếp.
+                    // Cách này giống HTTP request thường, rất bền với mạng lởm.
+                    try {
+                        Thread.sleep(2000); 
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
                 }
-                // Nếu task == null (hết 5s không có mail), vòng lặp chạy lại, thread vẫn sống khỏe.
 
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
             } catch (RedissonShutdownException e) {
                 break;
             } catch (Exception e) {
-                // Nếu gặp lỗi mạng (Redis connection closed), log nhẹ và đợi xíu rồi thử lại
-                if (e.getCause() instanceof RedissonShutdownException) break;
-                
-                log.error("Error processing email queue loop: {}", e.getMessage());
-                try { Thread.sleep(3000); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); break; }
+                // Nếu mất mạng Redis, ngủ 5s rồi thử lại
+                log.error("Redis connection glitch: {}", e.getMessage());
+                try { Thread.sleep(5000); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); break; }
             }
         }
     }
