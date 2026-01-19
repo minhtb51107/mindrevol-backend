@@ -1,46 +1,86 @@
 package com.mindrevol.backend.modules.notification.service.impl;
 
-import jakarta.mail.MessagingException;
-import jakarta.mail.internet.MimeMessage;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mindrevol.backend.modules.notification.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.MimeMessageHelper;
 import org.springframework.stereotype.Service;
 
-import com.mindrevol.backend.modules.notification.service.EmailService;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
+import java.time.Duration;
+import java.util.List;
+import java.util.Map;
 
-@Slf4j
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EmailServiceImpl implements EmailService {
 
-    private final JavaMailSender mailSender;
+    // Lấy API Key từ biến môi trường (Lúc này sẽ là key của SendGrid)
+    @Value("${app.email.api-key}") 
+    private String apiKey;
 
-    @Value("${spring.mail.username}")
-    private String fromEmail;
+    // Email này BẮT BUỘC phải trùng với email bạn đã "Verify Single Sender" trên SendGrid
+    @Value("${app.email.sender-email}")
+    private String senderEmail;
 
-    /**
-     * Gửi email đồng bộ. 
-     * Việc xử lý bất đồng bộ và retry sẽ do Queue Worker đảm nhiệm.
-     */
+    @Value("${app.email.sender-name:MindRevol}")
+    private String senderName;
+
+    private final ObjectMapper objectMapper;
+    
+    private final HttpClient httpClient = HttpClient.newBuilder()
+            .connectTimeout(Duration.ofSeconds(10))
+            .build();
+
     @Override
-    public void sendEmail(String to, String subject, String body) {
+    public void sendEmail(String to, String subject, String content) {
         try {
-            MimeMessage mimeMessage = mailSender.createMimeMessage();
-            MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, "utf-8");
+            log.info("🚀 Sending email via SendGrid API to: {}", to);
 
-            helper.setFrom(fromEmail);
-            helper.setTo(to);
-            helper.setSubject(subject);
-            helper.setText(body, true);
+            // --- CẤU TRÚC JSON CHUẨN CỦA SENDGRID ---
+            // Tài liệu: https://docs.sendgrid.com/api-reference/mail-send/mail-send
+            Map<String, Object> body = Map.of(
+                "personalizations", List.of(Map.of(
+                    "to", List.of(Map.of("email", to)),
+                    "subject", subject
+                )),
+                "from", Map.of(
+                    "email", senderEmail,
+                    "name", senderName
+                ),
+                "content", List.of(Map.of(
+                    "type", "text/html",
+                    "value", content
+                ))
+            );
 
-            mailSender.send(mimeMessage);
-            
-        } catch (MessagingException e) {
-            // Ném RuntimeException để Worker bắt được và xử lý retry
-            throw new RuntimeException("Failed to send email: " + e.getMessage(), e);
+            String jsonBody = objectMapper.writeValueAsString(body);
+
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create("https://api.sendgrid.com/v3/mail/send"))
+                    .header("Authorization", "Bearer " + apiKey) // SendGrid dùng Bearer Token
+                    .header("Content-Type", "application/json")
+                    .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                    .build();
+
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+            // SendGrid trả về 202 Accepted là thành công (Khác với Brevo là 201)
+            if (response.statusCode() == 202 || response.statusCode() == 200) {
+                log.info("✅ Email sent successfully via SendGrid!");
+            } else {
+                log.error("❌ Failed to send via SendGrid. Status: {}, Body: {}", response.statusCode(), response.body());
+                throw new RuntimeException("Failed to send email via SendGrid API");
+            }
+
+        } catch (Exception e) {
+            log.error("❌ Exception sending email via API", e);
+            throw new RuntimeException("Error sending email", e);
         }
     }
 }
