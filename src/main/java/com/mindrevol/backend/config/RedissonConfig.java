@@ -23,38 +23,37 @@ public class RedissonConfig {
     @Value("${spring.data.redis.ssl.enabled:false}")
     private boolean sslEnabled;
 
-    @Bean
+    @Bean(destroyMethod = "shutdown")
     public RedissonClient redissonClient() {
         Config config = new Config();
-        
-        // Xác định giao thức
+
+        // 1. Xác định giao thức (rediss:// cho SSL, redis:// cho thường)
         String protocol = sslEnabled ? "rediss" : "redis";
         String address = protocol + "://" + redisHost + ":" + redisPort;
 
-        // Cấu hình Single Server
+        // 2. Cấu hình Single Server
         SingleServerConfig serverConfig = config.useSingleServer()
               .setAddress(address)
-              
+
               // --- [TIMEOUT & MẠNG] ---
               .setConnectTimeout(30000)
               .setTimeout(30000)
               .setRetryAttempts(3)
               .setRetryInterval(1500)
-              
-              // [QUAN TRỌNG] Ping mỗi 60s để giữ kết nối mà không tốn Quota Upstash
-              .setPingConnectionInterval(60000) 
+
+              // [QUAN TRỌNG] Ping mỗi 30s (An toàn hơn 60s) để giữ kết nối không bị Upstash cắt
+              .setPingConnectionInterval(30000)
               .setKeepAlive(true)
 
-              // --- [CẤU HÌNH CÂN BẰNG GIỮA HIỆU NĂNG VÀ RAM] ---
-              // [FIX] Tăng từ 2 lên 8. 
-              // Lý do: Cần đủ kết nối cho các Worker chạy nền (BLPOP) + Request từ người dùng.
-              // 8 kết nối vẫn an toàn cho RAM 512MB nếu đã giới hạn Heap Size.
+              // --- [CẤU HÌNH POOL] ---
+              // Pool size 8 là hợp lý: Đủ cho 5 luồng Worker + vài Request từ API
+              // Với RAM 512MB, con số này vẫn nằm trong ngưỡng an toàn
               .setConnectionPoolSize(8)
-              
-              // Giữ tối thiểu 2 kết nối sẵn sàng (thay vì 1) để phản hồi nhanh hơn
+              // Giữ tối thiểu 2 kết nối sẵn sàng để phản hồi nhanh
               .setConnectionMinimumIdleSize(2)
-              
-              .setDnsMonitoringInterval(60000);
+
+              // [QUAN TRỌNG] Check IP mới mỗi 5 giây (Upstash đổi IP rất thường xuyên)
+              .setDnsMonitoringInterval(5000);
 
         if (redisPassword != null && !redisPassword.isEmpty()) {
             serverConfig.setPassword(redisPassword);
