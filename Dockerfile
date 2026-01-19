@@ -14,7 +14,7 @@ FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 
-# Cài đặt FFmpeg (Giữ lại nhưng hạn chế dùng)
+# Cài đặt FFmpeg
 RUN apt-get update && \
     apt-get install -y ffmpeg && \
     rm -rf /var/lib/apt/lists/*
@@ -23,10 +23,8 @@ COPY --from=builder /app/build/libs/*.jar app.jar
 
 EXPOSE 8080
 
-# [QUAN TRỌNG] CẤU HÌNH TỐI ƯU RAM CHO 512MB SERVER
-# -Xms128m -Xmx180m: Cấp tối thiểu 128MB, tối đa 180MB cho Heap.
-# -XX:+UseSerialGC: Dùng bộ dọn rác đơn luồng (nhẹ nhất cho CPU/RAM thấp).
-# -Xss256k: Giảm dung lượng stack mỗi luồng (mặc định 1MB -> 256KB) để tiết kiệm RAM khi có nhiều request.
-# -XX:MaxMetaspaceSize=100m: Giới hạn bộ nhớ chứa class metadata.
-# Giảm Heap xuống 130MB (đủ cho app chạy), Tăng Metaspace lên 200MB (để load đủ thư viện)
-ENTRYPOINT ["java", "-Xms130m", "-Xmx130m", "-XX:+UseSerialGC", "-Xss256k", "-XX:MaxMetaspaceSize=200m", "-jar", "app.jar"]
+# [CẤU HÌNH FINAL]
+# 1. Giữ Heap 130MB (để App chạy khỏe như lúc nãy).
+# 2. Thêm -Djava.net.preferIPv4Stack=true (Để fix lỗi mạng gửi mail).
+# 3. Các thông số SerialGC, CodeCache giữ nguyên để tiết kiệm RAM hệ thống.
+ENTRYPOINT ["java", "-Djava.net.preferIPv4Stack=true", "-Xms130m", "-Xmx130m", "-XX:MaxMetaspaceSize=140m", "-XX:ReservedCodeCacheSize=64m", "-XX:MaxDirectMemorySize=32m", "-XX:+UseSerialGC", "-Xss256k", "-jar", "app.jar"]
