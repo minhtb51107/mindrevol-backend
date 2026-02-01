@@ -1,5 +1,10 @@
 package com.mindrevol.backend.config;
 
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.springframework.cache.CacheManager;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
@@ -20,6 +25,25 @@ import java.util.Map;
 @EnableCaching
 public class RedisConfig {
 
+    /**
+     * Tạo Serializer tùy chỉnh có hỗ trợ Java 8 Date/Time (LocalDate, LocalDateTime)
+     */
+    private GenericJackson2JsonRedisSerializer createSerializer() {
+        ObjectMapper mapper = new ObjectMapper();
+        // 1. Đăng ký Module để xử lý ngày tháng (Fix lỗi SerializationException)
+        mapper.registerModule(new JavaTimeModule());
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        
+        // 2. Lưu thông tin Class vào JSON để khi đọc ra biết là object gì (Quan trọng)
+        mapper.activateDefaultTyping(
+                LaissezFaireSubTypeValidator.instance,
+                ObjectMapper.DefaultTyping.NON_FINAL,
+                JsonTypeInfo.As.PROPERTY
+        );
+        
+        return new GenericJackson2JsonRedisSerializer(mapper);
+    }
+
     @Bean
     public RedisTemplate<String, Object> redisTemplate(RedisConnectionFactory connectionFactory) {
         RedisTemplate<String, Object> template = new RedisTemplate<>();
@@ -28,7 +52,9 @@ public class RedisConfig {
         template.setKeySerializer(new StringRedisSerializer());
         template.setHashKeySerializer(new StringRedisSerializer());
 
-        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer();
+        // Sử dụng Serializer đã cấu hình ở trên
+        GenericJackson2JsonRedisSerializer jsonSerializer = createSerializer();
+        
         template.setValueSerializer(jsonSerializer);
         template.setHashValueSerializer(jsonSerializer);
 
@@ -38,17 +64,18 @@ public class RedisConfig {
 
     @Bean
     public CacheManager cacheManager(RedisConnectionFactory redisConnectionFactory) {
-        // Cấu hình mặc định (10 phút)
+        // Cũng phải dùng Serializer xịn này cho CacheManager để tránh lỗi tương tự khi cache dữ liệu
+        GenericJackson2JsonRedisSerializer jsonSerializer = createSerializer();
+
         RedisCacheConfiguration defaultCacheConfig = RedisCacheConfiguration.defaultCacheConfig()
                 .entryTtl(Duration.ofMinutes(10))
                 .disableCachingNullValues()
                 .serializeKeysWith(RedisSerializationContext.SerializationPair.fromSerializer(new StringRedisSerializer()))
-                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(new GenericJackson2JsonRedisSerializer()));
+                .serializeValuesWith(RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer)); // <--- Thay đổi ở đây
 
-        // Cấu hình riêng cho từng loại Cache
         Map<String, RedisCacheConfiguration> cacheConfigurations = new HashMap<>();
         
-        // Widget cần refresh khá nhanh (5 phút) để cập nhật streak/status
+        // Widget cần refresh nhanh (5 phút)
         cacheConfigurations.put("journey_widget", defaultCacheConfig.entryTtl(Duration.ofMinutes(5)));
         
         // Profile user ít thay đổi hơn (30 phút)

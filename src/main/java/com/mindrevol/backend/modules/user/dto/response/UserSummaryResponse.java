@@ -9,10 +9,14 @@ import lombok.Setter;
 @Setter
 @Builder
 public class UserSummaryResponse {
-    private String id; // [UUID] String
+    private String id;
     private String handle;
     private String fullname;
     private String avatarUrl;
+    // --- THÊM 2 TRƯỜNG NÀY ---
+    private boolean hasPassword; // True: Hiện form Pass | False: Hiện form OTP
+    private String authProvider; // LOCAL, GOOGLE, FACEBOOK...
+    // -------------------------
     private boolean isOnline;
     private LocalDateTime lastActiveAt;
     private String friendshipStatus; 
