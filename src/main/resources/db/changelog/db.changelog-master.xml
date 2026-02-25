@@ -22,5 +22,10 @@
     <include file="patches/016-add-internal-ads.xml" relativeToChangelogFile="true"/>
     <include file="patches/017-add-tags-to-ads.xml" relativeToChangelogFile="true"/>
     <include file="patches/018-remove-daily-limit.xml" relativeToChangelogFile="true"/>
+    <include file="patches/019-drop-otp-token-table.xml" relativeToChangelogFile="true"/>
+    <include file="patches/020-add-journey-theme-thumbnail.xml" relativeToChangelogFile="true"/>
+    <include file="patches/021-add-box-module.xml" relativeToChangelogFile="true"/>
+    
+    <include file="patches/022-add-journey-color-avatar.xml" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

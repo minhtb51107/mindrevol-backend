@@ -96,19 +96,9 @@ public class CheckinServiceImpl implements CheckinService {
         ZoneId userZone = ZoneId.of(tz);
         LocalDate todayLocal = LocalDate.now(userZone);
 
-        // Check End Date
         if (journey.getEndDate() != null && todayLocal.isAfter(journey.getEndDate().plusDays(1))) {
              throw new BadRequestException("Hành trình này đã kết thúc (Hạn chót: " + journey.getEndDate() + ").");
         }
-
-        // [FIX - CHO PHÉP CHECK-IN NHIỀU LẦN]
-        // Đoạn code kiểm tra duplicate checkin trong ngày đã bị xóa/comment đi
-        /*
-        if (participant.getLastCheckinAt() != null && 
-            participant.getLastCheckinAt().toLocalDate().isEqual(todayLocal)) {
-             throw new BadRequestException("Hôm nay bạn đã check-in rồi!");
-        }
-        */
 
         String imageUrl = "";
         String videoUrl = null;
@@ -119,7 +109,6 @@ public class CheckinServiceImpl implements CheckinService {
             MultipartFile file = request.getFile();
             String contentType = file.getContentType();
 
-            // --- XỬ LÝ VIDEO ---
             if (contentType != null && contentType.startsWith("video")) {
                 if (!currentUser.isPremium()) {
                     throw new BadRequestException("Tính năng Video/Live Photo chỉ dành cho thành viên GOLD.");
@@ -134,29 +123,20 @@ public class CheckinServiceImpl implements CheckinService {
                 try {
                     FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_VIDEOS + journey.getId());
                     imageFileId = uploadResult.getFileId();
-                    
                     String rawUrl = uploadResult.getUrl();
                     videoUrl = rawUrl + "?tr=w-720,q-60,an-true"; 
                     imageUrl = rawUrl + "/ik-thumbnail.jpg?tr=w-720"; 
-
                 } catch (Exception e) {
                     throw new BadRequestException("Lỗi upload video: " + e.getMessage());
                 }
                 
-            } 
-            // --- XỬ LÝ ẢNH ---
-            else {
+            } else {
                 mediaType = MediaType.IMAGE;
-                
-                LocalDateTime exifDate = metadataService.getCreationDate(file);
-                
                 try {
                     FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_IMAGES + journey.getId());
                     imageUrl = uploadResult.getUrl() + "?tr=w-1080,q-80"; 
                     imageFileId = uploadResult.getFileId();
-
                     moderationService.validateImage(uploadResult.getUrl()); 
-
                 } catch (BadRequestException e) {
                     if (imageFileId != null) fileStorageService.deleteFile(imageFileId);
                     throw e;
@@ -183,13 +163,21 @@ public class CheckinServiceImpl implements CheckinService {
                                                    LocalDate todayLocal) {
         
         CheckinStatus finalStatus = CheckinStatus.NORMAL;
-        if (request.getStatusRequest() == CheckinStatus.REST) {
+        if (request.getStatusRequest() != null && request.getStatusRequest().toString().equalsIgnoreCase("REST")) {
             finalStatus = CheckinStatus.REST;
         }
 
         String finalActivityName = request.getActivityName();
         if (finalActivityName != null && finalActivityName.trim().isEmpty()) {
             finalActivityName = null;
+        }
+
+        // [FIXED] Xử lý emotion: Đảm bảo chuyển thành String
+        String finalEmotion = Emotion.NORMAL.name(); // Giá trị mặc định
+        
+        if (request.getEmotion() != null) {
+            // Dù request.getEmotion() trả về String hay Enum, .toString() đều an toàn
+            finalEmotion = request.getEmotion().toString();
         }
 
         Checkin checkin = Checkin.builder()
@@ -201,13 +189,14 @@ public class CheckinServiceImpl implements CheckinService {
                 .videoUrl(videoUrl)
                 .imageFileId(imageFileId)
                 .thumbnailUrl(imageUrl)
-                .emotion(request.getEmotion())
+                // [FIXED] Truyền String vào builder
+                .emotion(finalEmotion)
                 .activityType(request.getActivityType() != null ? request.getActivityType() : ActivityType.DEFAULT)
                 .activityName(finalActivityName)
                 .locationName(request.getLocationName())
                 .tags(request.getTags() != null ? request.getTags() : new ArrayList<>())
                 .status(finalStatus)
-                .visibility(request.getVisibility()) 
+                .visibility(request.getVisibility() != null ? request.getVisibility() : CheckinVisibility.PUBLIC) 
                 .createdAt(LocalDateTime.now())
                 .checkinDate(todayLocal)
                 .build();
@@ -227,8 +216,6 @@ public class CheckinServiceImpl implements CheckinService {
     }
 
     private void updateParticipantStats(JourneyParticipant participant, CheckinStatus status, LocalDate todayLocal) {
-        // [LOGIC MỚI] Chỉ tính là 1 ngày active nếu ngày trước đó khác hôm nay
-        // Hỗ trợ trường hợp post nhiều ảnh cùng 1 ngày
         boolean isFirstCheckinToday = false;
         
         if (participant.getLastCheckinAt() == null) {
@@ -251,13 +238,12 @@ public class CheckinServiceImpl implements CheckinService {
                 participant.setCurrentStreak(1);
             } else {
                 LocalDate lastDate = participant.getLastCheckinAt().toLocalDate();
-                // Nếu checkin cùng ngày -> Streak giữ nguyên
                 if (!lastDate.equals(todayLocal)) {
                     long daysGap = ChronoUnit.DAYS.between(lastDate, todayLocal);
                     if (daysGap > 1) {
-                        participant.setCurrentStreak(1); // Gãy streak
+                        participant.setCurrentStreak(1); 
                     } else if (daysGap == 1) {
-                        participant.setCurrentStreak(participant.getCurrentStreak() + 1); // Tiếp tục streak
+                        participant.setCurrentStreak(participant.getCurrentStreak() + 1); 
                     }
                 }
             }
@@ -287,7 +273,16 @@ public class CheckinServiceImpl implements CheckinService {
         Pageable pageable = PageRequest.of(0, limit);
         Set<String> excludedUserIds = getExcludedUserIds(currentUser.getId());
 
-        return checkinRepository.findUnifiedFeed(currentUser.getId(), cursor, excludedUserIds, pageable)
+        // Lọc 3 ngày
+        LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
+
+        return checkinRepository.findUnifiedFeedRecent(
+                    currentUser.getId(), 
+                    threeDaysAgo, 
+                    cursor, 
+                    excludedUserIds, 
+                    pageable
+                )
                 .stream()
                 .map(checkinMapper::toResponse)
                 .map(this::enrichResponse)
@@ -365,13 +360,11 @@ public class CheckinServiceImpl implements CheckinService {
                 .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
 
         if (!checkin.getUser().getId().equals(currentUser.getId())) {
-            // Cho phép Admin xóa
             boolean isAdmin = currentUser.getRoles().stream().anyMatch(r -> r.getName().equals("ADMIN"));
             if (!isAdmin) throw new BadRequestException("Bạn không có quyền xóa bài viết này");
         }
 
         Journey journey = checkin.getJourney();
-        
         checkinRepository.delete(checkin);
         checkinRepository.flush(); 
 
@@ -418,12 +411,10 @@ public class CheckinServiceImpl implements CheckinService {
         int streak = 0;
         LocalDate cursorDate = today;
         
-        // Nếu hôm nay chưa check-in, thử lùi lại hôm qua xem có đứt chuỗi chưa
         if (!uniqueDates.contains(cursorDate)) {
             if (uniqueDates.contains(cursorDate.minusDays(1))) {
                 cursorDate = cursorDate.minusDays(1); 
             } else {
-                // Đứt chuỗi (cách quá 1 ngày)
                 participant.setCurrentStreak(0);
                 participantRepository.save(participant);
                 return;

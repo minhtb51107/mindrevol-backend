@@ -21,19 +21,13 @@ public class ApiResponse<T> {
     private String message;   // Message cho End-user (VD: "Thành công")
     private String errorCode; // Mã lỗi cho Dev/System (VD: USER_NOT_FOUND)
     
-    // [NÂNG CẤP] Trace ID để truy vết lỗi trong Log (khớp với MdcLoggingFilter)
     private String traceId; 
 
-    // [NÂNG CẤP] Format ngày giờ chuẩn ISO 8601 để Frontend dễ parse
     @Builder.Default
     @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss.SSS")
     private LocalDateTime timestamp = LocalDateTime.now();
 
-    private T data; // Dữ liệu chính
-
-    // ========================================================================
-    //  STATIC FACTORY METHODS (Tiện ích để gọi nhanh)
-    // ========================================================================
+    private T data; 
 
     // 1. Thành công - Có dữ liệu
     public static <T> ApiResponse<T> success(T data) {

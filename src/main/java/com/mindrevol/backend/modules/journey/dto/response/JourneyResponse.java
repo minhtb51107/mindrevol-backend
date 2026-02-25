@@ -9,7 +9,7 @@ import java.time.LocalDate;
 @Data
 @Builder
 public class JourneyResponse {
-    private String id; // [UUID] String
+    private String id; 
     private String name;
     private String description;
     private LocalDate startDate;
@@ -18,16 +18,18 @@ public class JourneyResponse {
     private JourneyStatus status;
     private String inviteCode;
 
-    // [FIX] Thêm trường này để sửa lỗi compilation
     private boolean requireApproval; 
-
-    // [FIX] Thêm creatorId để frontend xác định Owner
     private String creatorId; 
-    
-    // [FIX] Đổi tên từ totalMembers -> participantCount cho khớp với Frontend
     private int participantCount; 
     
+    // [THÊM MỚI] ID của Không gian chứa hành trình này
+    private String boxId; 
+    
     private CurrentUserStatus currentUserStatus;
+    
+    private String themeColor;
+    
+    private String avatar;
 
     @Data
     @Builder

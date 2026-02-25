@@ -4,5 +4,5 @@ public enum Emotion {
     EXCITED,    // Hào hứng
     NORMAL,     // Bình thường
     TIRED,      // Mệt mỏi
-    HOPELESS    // Tuyệt vọng
+    HOPELESS,    // Tuyệt vọng
 }

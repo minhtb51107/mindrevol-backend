@@ -3,6 +3,8 @@ package com.mindrevol.backend.modules.journey.service.impl;
 import com.mindrevol.backend.common.constant.AppConstants;
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
+import com.mindrevol.backend.modules.box.entity.Box;
+import com.mindrevol.backend.modules.box.repository.BoxRepository;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
@@ -34,6 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -55,8 +58,9 @@ public class JourneyServiceImpl implements JourneyService {
 
     private final CheckinRepository checkinRepository;
     private final CheckinMapper checkinMapper;
+    
+    private final BoxRepository boxRepository;
 
-    // Helper: Lấy ngày hiện tại theo Timezone của User
     private LocalDate getTodayInUserTimezone(User user) {
         String tz = user.getTimezone() != null ? user.getTimezone() : "UTC";
         try {
@@ -66,43 +70,38 @@ public class JourneyServiceImpl implements JourneyService {
         }
     }
 
-    // --- 1. LẤY HÀNH TRÌNH ACTIVE (READ-ONLY) ---
     @Override
     @Transactional(readOnly = true)
     public List<UserActiveJourneyResponse> getUserActiveJourneys(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
         LocalDate today = getTodayInUserTimezone(user);
-        
-        // [FIX] Sử dụng query tối ưu trong Repository
-        List<Journey> activeJourneys = journeyRepository.findActiveJourneysByUserId(userId, today);
-        
+        List<Journey> activeJourneys = journeyRepository.findActiveJourneysByUserIdWithMembers(userId, today);
         return activeJourneys.stream().map(journey -> {
-            JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
+            JourneyParticipant p = journey.getParticipants().stream()
+                    .filter(part -> part.getUser().getId().equals(userId))
+                    .findFirst()
+                    .orElse(null);
+            if (p == null) {
+                p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
+            }
             return mapSingleJourneyToResponse(journey, p, userId);
         }).collect(Collectors.toList());
     }
 
-    // --- 2. LẤY HÀNH TRÌNH FINISHED (READ-ONLY) ---
     @Override
     @Transactional(readOnly = true)
     public List<UserActiveJourneyResponse> getUserFinishedJourneys(String userId) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
         LocalDate today = getTodayInUserTimezone(user);
-
-        // [FIX] Sử dụng query tối ưu
         List<Journey> completedJourneys = journeyRepository.findCompletedJourneysByUserId(userId, today);
-
         return completedJourneys.stream().map(journey -> {
             JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
             return mapSingleJourneyToResponse(journey, p, userId);
         }).collect(Collectors.toList());
     }
 
-    // Helper mapping mới để tránh duplicate code
     private UserActiveJourneyResponse mapSingleJourneyToResponse(Journey journey, JourneyParticipant participant, String userId) {
         List<Checkin> myCheckins = checkinRepository.findByJourneyIdAndUserId(journey.getId(), userId);
         List<CheckinResponse> checkinResponses = myCheckins.stream()
@@ -111,6 +110,8 @@ public class JourneyServiceImpl implements JourneyService {
                 .collect(Collectors.toList());
 
         boolean hasNewUpdates = false;
+        String latestCheckinImage = null;
+
         Pageable limitOne = PageRequest.of(0, 1);
         var latestPage = checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journey.getId(), limitOne);
         
@@ -119,8 +120,36 @@ public class JourneyServiceImpl implements JourneyService {
             if (!latestCheckin.getUser().getId().equals(userId)) {
                 hasNewUpdates = true;
             }
+            if (latestCheckin.getImageUrl() != null && !latestCheckin.getImageUrl().isEmpty()) {
+                latestCheckinImage = latestCheckin.getImageUrl();
+            }
         }
 
+        String finalThumbnail = journey.getThumbnailUrl();
+        if ((finalThumbnail == null || finalThumbnail.isEmpty()) && latestCheckinImage != null) {
+            finalThumbnail = latestCheckinImage;
+        }
+
+        List<JourneyParticipant> members = journey.getParticipants();
+        if (members == null) {
+             members = participantRepository.findAllByJourneyId(journey.getId());
+        }
+        
+        int totalMembers = members.size();
+        List<String> memberAvatars = members.stream()
+                .limit(3)
+                .map(mp -> mp.getUser().getAvatarUrl())
+                .collect(Collectors.toList());
+
+        long daysRemaining = 0;
+        if (journey.getEndDate() != null) {
+            LocalDate now = LocalDate.now();
+            if (journey.getEndDate().isAfter(now) || journey.getEndDate().isEqual(now)) {
+                daysRemaining = ChronoUnit.DAYS.between(now, journey.getEndDate());
+            }
+        }
+
+        String themeString = (journey.getTheme() != null) ? journey.getTheme().name() : JourneyTheme.OTHER.name();
         int totalCheckins = participant != null ? participant.getTotalCheckins() : 0;
 
         return UserActiveJourneyResponse.builder()
@@ -131,6 +160,14 @@ public class JourneyServiceImpl implements JourneyService {
                 .visibility(journey.getVisibility().name())
                 .startDate(journey.getStartDate())
                 .endDate(journey.getEndDate())
+                .thumbnailUrl(finalThumbnail)
+                .theme(themeString)
+                // [THÊM MỚI] Gán dữ liệu màu và icon cho Profile Card
+                .themeColor(journey.getThemeColor())
+                .avatar(journey.getAvatar())
+                .memberAvatars(memberAvatars)
+                .totalMembers(totalMembers)
+                .daysRemaining(daysRemaining)
                 .totalCheckins(totalCheckins)
                 .checkins(checkinResponses)
                 .hasNewUpdates(hasNewUpdates)
@@ -174,7 +211,6 @@ public class JourneyServiceImpl implements JourneyService {
     public JourneyResponse createJourney(CreateJourneyRequest request, String userId) {
         User currentUser = getUserEntity(userId);
         
-        // [FIX LOGIC COUNT] Truyền ngày hiện tại vào để đếm chính xác
         LocalDate today = getTodayInUserTimezone(currentUser);
         long activeCount = participantRepository.countActiveByUserId(userId, today); 
         
@@ -188,6 +224,8 @@ public class JourneyServiceImpl implements JourneyService {
             throw new BadRequestException("Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");
         }
 
+        JourneyTheme theme = (request.getTheme() != null) ? request.getTheme() : JourneyTheme.OTHER;
+
         Journey journey = Journey.builder()
                 .name(request.getName())
                 .description(request.getDescription())
@@ -198,12 +236,24 @@ public class JourneyServiceImpl implements JourneyService {
                 .status(determineStatus(request.getStartDate()))
                 .inviteCode(RandomStringUtils.randomAlphanumeric(8).toUpperCase())
                 .creator(currentUser)
+                .theme(theme)
+                .thumbnailUrl(request.getThumbnailUrl())
+                // [THÊM MỚI] Map giá trị màu và emoji khi tạo mới
+                .themeColor(request.getThemeColor() != null ? request.getThemeColor() : "#3b82f6")
+                .avatar(request.getAvatar() != null ? request.getAvatar() : "🚀")
                 .build();
+                
+        if (request.getBoxId() != null && !request.getBoxId().trim().isEmpty()) {
+            Box box = boxRepository.findById(request.getBoxId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Không gian đã chọn."));
+            journey.setBox(box);
+        }
         
         journey = journeyRepository.save(journey);
         JourneyParticipant owner = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.OWNER).joinedAt(LocalDateTime.now()).build();
         participantRepository.save(owner);
         eventPublisher.publishEvent(new JourneyCreatedEvent(journey, currentUser));
+        
         return mapToResponse(journey, owner, null);
     }
 
@@ -211,10 +261,8 @@ public class JourneyServiceImpl implements JourneyService {
     @Transactional 
     public JourneyResponse joinJourney(String inviteCode, String userId) {
         User currentUser = getUserEntity(userId);
-        
         Journey journeyInfo = journeyRepository.findByInviteCode(inviteCode)
                 .orElseThrow(() -> new ResourceNotFoundException("Mã mời không hợp lệ"));
-        
         Journey journey = journeyRepository.findByIdWithLock(journeyInfo.getId())
                 .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
 
@@ -242,7 +290,6 @@ public class JourneyServiceImpl implements JourneyService {
     @Override
     public JourneyResponse getJourneyDetail(String userId, String journeyId) {
         Journey journey = getJourneyEntity(journeyId);
-        
         JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journeyId, userId).orElse(null);
         String pendingStatus = null;
         if (participant == null && journey.isRequireApproval()) {
@@ -282,9 +329,31 @@ public class JourneyServiceImpl implements JourneyService {
         Journey journey = getJourneyEntity(journeyId);
         JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journeyId, userId).orElseThrow(() -> new BadRequestException("Không tham gia"));
         if (p.getRole() != JourneyRole.OWNER) throw new BadRequestException("Chỉ chủ hành trình mới được sửa.");
+        
         journey.setName(request.getName());
         journey.setDescription(request.getDescription());
         journey.setVisibility(request.getVisibility());
+        
+        if (request.getTheme() != null) journey.setTheme(request.getTheme());
+        if (request.getThumbnailUrl() != null) journey.setThumbnailUrl(request.getThumbnailUrl());
+
+        // Cập nhật màu và avatar
+        if (request.getThemeColor() != null) journey.setThemeColor(request.getThemeColor());
+        if (request.getAvatar() != null) journey.setAvatar(request.getAvatar());
+
+        // [THÊM MỚI] Cập nhật Box
+        if (request.getBoxId() != null) {
+            if (request.getBoxId().trim().isEmpty()) {
+                // Nếu Frontend truyền chuỗi rỗng ("") -> Gỡ Hành trình khỏi Box hiện tại
+                journey.setBox(null); 
+            } else {
+                // Nếu có ID -> Cập nhật sang Box mới
+                Box box = boxRepository.findById(request.getBoxId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Không gian đã chọn."));
+                journey.setBox(box);
+            }
+        }
+
         return mapToResponse(journeyRepository.save(journey), p, null);
     }
 
@@ -387,7 +456,27 @@ public class JourneyServiceImpl implements JourneyService {
             userStatus = JourneyResponse.CurrentUserStatus.builder().role(overrideRole).currentStreak(0).totalCheckins(0).hasCheckedInToday(false).build();
         }
         String creatorId = (journey.getCreator() != null) ? String.valueOf(journey.getCreator().getId()) : null;
-        return JourneyResponse.builder().id(journey.getId()).name(journey.getName()).description(journey.getDescription()).startDate(journey.getStartDate()).endDate(journey.getEndDate()).visibility(journey.getVisibility()).status(journey.getStatus()).inviteCode(journey.getInviteCode()).creatorId(creatorId).participantCount((int) totalMembers).currentUserStatus(userStatus).requireApproval(journey.isRequireApproval()).build();
+        
+        String boxId = (journey.getBox() != null) ? journey.getBox().getId() : null;
+
+        return JourneyResponse.builder()
+                .id(journey.getId())
+                .name(journey.getName())
+                .description(journey.getDescription())
+                .startDate(journey.getStartDate())
+                .endDate(journey.getEndDate())
+                .visibility(journey.getVisibility())
+                .status(journey.getStatus())
+                .inviteCode(journey.getInviteCode())
+                .creatorId(creatorId)
+                .participantCount((int) totalMembers)
+                .currentUserStatus(userStatus)
+                .requireApproval(journey.isRequireApproval())
+                .boxId(boxId) 
+                // [THÊM MỚI] Gán màu và icon vào Response
+                .themeColor(journey.getThemeColor())
+                .avatar(journey.getAvatar())
+                .build();
     }
 
     private void validateJourneyCapacity(Journey journey) {

@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="020-add-journey-theme-thumbnail" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="journeys"/>
+            <not>
+                <columnExists tableName="journeys" columnName="theme"/>
+            </not>
+        </preConditions>
+
+        <comment>Adding thumbnail_url and theme columns to journeys table</comment>
+
+        <addColumn tableName="journeys">
+            <column name="thumbnail_url" type="VARCHAR(500)">
+                <constraints nullable="true"/>
+            </column>
+            
+            <column name="theme" type="VARCHAR(50)" defaultValue="OTHER">
+                <constraints nullable="false"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

@@ -90,6 +90,12 @@ public class SecurityConfig {
                         "/api/v1/payment/webhook",
                         "/actuator/prometheus" // Vẫn giữ public ở đây
                 ).permitAll()
+                
+                .requestMatchers(
+                        "/v3/api-docs/**",
+                        "/swagger-ui/**",
+                        "/swagger-ui.html"
+                    ).permitAll()
 
                 // 2. SECURED API ENDPOINTS
                 .requestMatchers("/api/v1/**").authenticated()

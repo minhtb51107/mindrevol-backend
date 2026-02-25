@@ -34,7 +34,6 @@ public class NotificationService {
 
     @Async 
     @Transactional
-    // [UUID] recipientId, senderId là String
     public void sendAndSaveNotification(String recipientId, String senderId, NotificationType type,
                                         String title, String message, String referenceId, String imageUrl) {
         
@@ -65,7 +64,7 @@ public class NotificationService {
                 .message(message)
                 .referenceId(referenceId)
                 .imageUrl(imageUrl)
-                .isRead(false)
+                .isRead(false) // Mặc định là chưa đọc
                 .build();
         
         notificationRepository.save(notification);
@@ -89,19 +88,19 @@ public class NotificationService {
         
         // Gửi qua WebSocket
         messagingTemplate.convertAndSendToUser(
-                recipient.getId(), // [NOTE] Dùng ID làm destination cho chính xác
+                recipient.getId(), 
                 "/queue/notifications", 
                 response
         );
     }
 
+    @Transactional(readOnly = true)
     public Page<NotificationResponse> getMyNotifications(String userId, Pageable pageable) {
         return notificationRepository.findByRecipientIdOrderByCreatedAtDesc(userId, pageable)
                 .map(this::toResponse);
     }
 
     @Transactional
-    // [UUID] notificationId là String
     public void markAsRead(String notificationId, String userId) {
         Notification notification = notificationRepository.findById(notificationId)
                 .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
@@ -110,17 +109,37 @@ public class NotificationService {
             return;
         }
         
+        // Cập nhật trạng thái và Lưu Cứng vào DB
         notification.setRead(true);
         notificationRepository.save(notification);
     }
 
     @Transactional
     public void markAllAsRead(String userId) {
+        // [LƯU Ý] Đảm bảo hàm này trong NotificationRepository đã có @Modifying
         notificationRepository.markAllAsRead(userId);
     }
     
+    @Transactional(readOnly = true)
     public long countUnread(String userId) {
         return notificationRepository.countByRecipientIdAndIsReadFalse(userId);
+    }
+    
+    @Transactional
+    public void deleteNotification(String notificationId, String userId) {
+        Notification notification = notificationRepository.findById(notificationId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy thông báo"));
+        
+        // Phải đúng chủ nhân mới được xóa
+        if (notification.getRecipient().getId().equals(userId)) {
+            notificationRepository.delete(notification);
+        }
+    }
+
+    @Transactional
+    public void deleteAllMyNotifications(String userId) {
+        // Hàm này tự viết thêm bên NotificationRepository
+        notificationRepository.deleteAllByRecipientId(userId);
     }
 
     private NotificationResponse toResponse(Notification n) {
@@ -128,13 +147,13 @@ public class NotificationService {
                 .id(n.getId())
                 .title(n.getTitle())
                 .message(n.getMessage())
-                .type(n.getType())
+                .type(n.getType() != null ? n.getType().name() : null) 
                 .referenceId(n.getReferenceId())
                 .imageUrl(n.getImageUrl())
                 .isRead(n.isRead())
                 .createdAt(n.getCreatedAt()) 
                 .senderId(n.getSender() != null ? n.getSender().getId() : null)
-                .senderName(n.getSender() != null ? n.getSender().getFullname() : "System")
+                .senderName(n.getSender() != null ? n.getSender().getFullname() : "Hệ thống")
                 .build();
     }
 }

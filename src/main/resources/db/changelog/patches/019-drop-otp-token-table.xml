@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="019-drop-otp-token-table" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="otp_tokens"/>
+        </preConditions>
+        
+        <dropTable tableName="otp_tokens" cascadeConstraints="true"/>
+        
+        <rollback>
+            <createTable tableName="otp_tokens">
+                <column name="id" type="VARCHAR(36)">
+                    <constraints primaryKey="true" nullable="false"/>
+                </column>
+                <column name="otp_code" type="VARCHAR(255)">
+                    <constraints nullable="false"/>
+                </column>
+                <column name="user_id" type="VARCHAR(36)">
+                    <constraints nullable="false" unique="true" foreignKeyName="fk_otp_user" referencedTableName="users" referencedColumnNames="id"/>
+                </column>
+                <column name="expires_at" type="TIMESTAMP WITH TIME ZONE">
+                    <constraints nullable="false"/>
+                </column>
+                <column name="retry_count" type="INT" defaultValueNumeric="0">
+                    <constraints nullable="false"/>
+                </column>
+            </createTable>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>

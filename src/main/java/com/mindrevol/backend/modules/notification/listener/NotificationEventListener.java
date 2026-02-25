@@ -1,6 +1,9 @@
 package com.mindrevol.backend.modules.notification.listener;
 
 import com.mindrevol.backend.common.event.CheckinSuccessEvent;
+import com.mindrevol.backend.modules.box.entity.Box;
+import com.mindrevol.backend.modules.box.event.BoxMemberAddedEvent;
+import com.mindrevol.backend.modules.box.event.BoxMemberInvitedEvent;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
@@ -29,12 +32,11 @@ import java.util.Map;
 public class NotificationEventListener {
 
     private final NotificationService notificationService;
-    private final FirebaseService firebaseService; // [QUAN TRỌNG] Service bắn tin
+    private final FirebaseService firebaseService; 
     private final CheckinRepository checkinRepository;
     private final JourneyParticipantRepository participantRepository;
 
     // --- 1. XỬ LÝ KHI CÓ BÀI ĐĂNG MỚI (CHECK-IN) ---
-    // Đây là tính năng quan trọng nhất để kéo user quay lại app
     @Async
     @EventListener
     @Transactional(readOnly = true)
@@ -48,30 +50,26 @@ public class NotificationEventListener {
         String journeyName = checkin.getJourney().getName();
         String journeyId = checkin.getJourney().getId();
 
-        // Lấy tất cả thành viên trong hành trình (để thông báo cho họ)
         List<JourneyParticipant> participants = participantRepository.findAllByJourneyId(journeyId);
 
         for (JourneyParticipant p : participants) {
             User recipient = p.getUser();
 
-            // Không gửi cho chính tác giả
             if (recipient.getId().equals(author.getId())) continue;
 
             String title = "Khoảnh khắc mới! 📸";
             String body = author.getFullname() + " vừa check-in trong " + journeyName;
 
-            // 1. Lưu vào Database (Tab thông báo)
             notificationService.sendAndSaveNotification(
-                    recipient.getId(),      // Người nhận
-                    author.getId(),         // Người gây ra (Actor) (Lưu ý: API cũ của bạn nhận String ID)
+                    recipient.getId(),      
+                    author.getId(),         
                     NotificationType.CHECKIN,
                     title,
                     body,
-                    checkin.getId(),        // Target ID (để click vào xem chi tiết)
-                    checkin.getImageUrl()   // Thumbnail
+                    checkin.getId(),        
+                    checkin.getImageUrl()   
             );
 
-            // 2. Bắn Push Notification (Ting ting trên điện thoại)
             if (recipient.getFcmToken() != null) {
                 Map<String, String> data = new HashMap<>();
                 data.put("type", "CHECKIN");
@@ -91,13 +89,11 @@ public class NotificationEventListener {
         User commenter = event.getCommenter();
         User postOwner = checkin.getUser();
 
-        // Chỉ gửi thông báo nếu người comment khác người đăng bài
         if (!postOwner.getId().equals(commenter.getId())) {
             
             String title = "Bình luận mới 💬";
             String body = commenter.getFullname() + ": " + event.getContent();
 
-            // 1. Lưu DB
             notificationService.sendAndSaveNotification(
                     postOwner.getId(),
                     commenter.getId(),
@@ -108,7 +104,6 @@ public class NotificationEventListener {
                     commenter.getAvatarUrl()
             );
             
-            // 2. Bắn Push Notification
             if (postOwner.getFcmToken() != null) {
                 Map<String, String> data = new HashMap<>();
                 data.put("type", "COMMENT");
@@ -119,5 +114,72 @@ public class NotificationEventListener {
 
             log.info("Sent notification for comment on checkin {}", checkin.getId());
         }
+    }
+
+    // --- [THÊM MỚI] 3. XỬ LÝ KHI CÓ NGƯỜI ĐƯỢC THÊM VÀO BOX ---
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleBoxMemberAdded(BoxMemberAddedEvent event) {
+        Box box = event.getBox();
+        User adder = event.getAdder();
+        User newMember = event.getNewMember();
+
+        String title = "Không gian mới! 📦";
+        String body = adder.getFullname() + " đã thêm bạn vào không gian " + box.getName();
+
+        // 1. Lưu DB và gửi qua WebSocket
+        notificationService.sendAndSaveNotification(
+                newMember.getId(),
+                adder.getId(),
+                NotificationType.BOX_ADDED,
+                title,
+                body,
+                box.getId(), // ReferenceId là BoxId để khi click vào sẽ bay tới Box
+                box.getAvatar() != null ? box.getAvatar() : "📦" // Lấy Emoji của box làm icon thông báo
+        );
+        
+        // 2. Bắn Push Notification FCM
+        if (newMember.getFcmToken() != null) {
+            Map<String, String> data = new HashMap<>();
+            data.put("type", "BOX_ADDED");
+            data.put("targetId", box.getId());
+            
+            firebaseService.sendNotification(newMember.getFcmToken(), title, body, data);
+        }
+        
+        log.info("Sent notification: {} added {} to Box {}", adder.getId(), newMember.getId(), box.getId());
+    }
+    
+    @Async
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void handleBoxMemberInvited(BoxMemberInvitedEvent event) {
+        Box box = event.getBox();
+        User inviter = event.getInviter();
+        User invitee = event.getInvitee();
+
+        String title = "Lời mời Không gian! 📦";
+        String body = inviter.getFullname() + " đã mời bạn tham gia vào " + box.getName();
+
+        // Lưu DB với Type BOX_INVITE
+        notificationService.sendAndSaveNotification(
+                invitee.getId(),
+                inviter.getId(),
+                NotificationType.BOX_INVITE, 
+                title,
+                body,
+                box.getId(), // ReferenceId là BoxId
+                box.getAvatar() != null ? box.getAvatar() : "📦" 
+        );
+        
+        // Push Notification FCM
+        if (invitee.getFcmToken() != null) {
+            Map<String, String> data = new HashMap<>();
+            data.put("type", "BOX_INVITE");
+            data.put("targetId", box.getId());
+            
+            firebaseService.sendNotification(invitee.getFcmToken(), title, body, data);
+        }
+        
+        log.info("Sent invite notification: {} invited {} to Box {}", inviter.getId(), invitee.getId(), box.getId());
     }
 }

@@ -52,8 +52,9 @@ public class RedissonConfig {
               // Giữ tối thiểu 2 kết nối sẵn sàng để phản hồi nhanh
               .setConnectionMinimumIdleSize(2)
 
-              // [QUAN TRỌNG] Check IP mới mỗi 5 giây (Upstash đổi IP rất thường xuyên)
-              .setDnsMonitoringInterval(5000);
+           // [SỬA Ở ĐÂY] Tăng từ 5000 lên 3600000 (1 giờ mới check DNS 1 lần)
+              // Upstash dùng Load Balancer IP nên không cần check quá gắt
+              .setDnsMonitoringInterval(3600000);
 
         if (redisPassword != null && !redisPassword.isEmpty()) {
             serverConfig.setPassword(redisPassword);

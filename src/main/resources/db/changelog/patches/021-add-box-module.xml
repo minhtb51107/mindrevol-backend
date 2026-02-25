@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.9.xsd">
+
+    <changeSet id="021-01-create-boxes-table" author="mindrevol">
+        <createTable tableName="boxes">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(100)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="VARCHAR(500)"/>
+            
+            <column name="avatar" type="VARCHAR(255)"/> 
+            <column name="cover_image" type="VARCHAR(255)"/>
+            <column name="theme_color" type="VARCHAR(20)"/> 
+            
+            <column name="owner_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_boxes_owner" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            <column name="is_archived" type="BOOLEAN" defaultValueBoolean="false">
+                <constraints nullable="false"/>
+            </column>
+
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+            <column name="deleted_at" type="TIMESTAMP"/>
+            <column name="created_by" type="VARCHAR(255)"/>
+            <column name="last_modified_by" type="VARCHAR(255)"/>
+        </createTable>
+    </changeSet>
+
+    <changeSet id="021-02-create-box-members-table" author="mindrevol">
+        <createTable tableName="box_members">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="box_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_box_members_box" referencedTableName="boxes" referencedColumnNames="id"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_box_members_user" referencedTableName="users" referencedColumnNames="id"/>
+            </column>
+            
+            <column name="role" type="VARCHAR(20)" defaultValue="MEMBER">
+                <constraints nullable="false"/>
+            </column>
+            
+            <column name="joined_at" type="TIMESTAMP"/>
+            
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+            <column name="deleted_at" type="TIMESTAMP"/>
+            <column name="created_by" type="VARCHAR(255)"/>
+            <column name="last_modified_by" type="VARCHAR(255)"/>
+        </createTable>
+        <addUniqueConstraint tableName="box_members" columnNames="box_id, user_id" constraintName="uk_box_members_box_user"/>
+    </changeSet>
+
+    <changeSet id="021-03-add-box-id-to-journeys" author="mindrevol">
+        <addColumn tableName="journeys">
+            <column name="box_id" type="VARCHAR(36)">
+                <constraints nullable="true" foreignKeyName="fk_journeys_box" referencedTableName="boxes" referencedColumnNames="id"/>
+            </column>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

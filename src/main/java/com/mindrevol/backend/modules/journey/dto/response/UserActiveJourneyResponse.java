@@ -19,14 +19,22 @@ public class UserActiveJourneyResponse {
     private String status;        
     private String visibility;    
     private LocalDate startDate;
-    
-    // [QUAN TRỌNG] Thêm trường này để Frontend lọc
     private LocalDate endDate; 
 
-    private int totalCheckins;
+    // --- CÁC TRƯỜNG CHO CARD UI ---
+    private String thumbnailUrl;       
+    private String theme;              
     
-    // Cờ báo hiệu có bài đăng mới
-    private boolean hasNewUpdates; 
+    // --- [THÊM MỚI] ---
+    private String themeColor;
+    private String avatar;
+    // ------------------
 
+    private List<String> memberAvatars;
+    private int totalMembers;          
+    private long daysRemaining;        
+
+    private int totalCheckins;         
+    private boolean hasNewUpdates;     
     private List<CheckinResponse> checkins; 
 }

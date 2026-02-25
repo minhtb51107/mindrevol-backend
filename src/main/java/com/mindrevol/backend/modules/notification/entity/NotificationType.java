@@ -19,5 +19,6 @@ public enum NotificationType {
     
     // Recap
     RECAP_READY         // Video recap đã sẵn sàng
-, CHECKIN
+    , CHECKIN,
+    BOX_ADDED, BOX_INVITE
 }

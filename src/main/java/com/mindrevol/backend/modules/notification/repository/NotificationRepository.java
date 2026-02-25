@@ -21,4 +21,13 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     @Modifying
     @Query("UPDATE Notification n SET n.isRead = true WHERE n.recipient.id = :userId")
     void markAllAsRead(@Param("userId") String userId);
+    
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.recipient.id = :userId")
+    void deleteAllByRecipientId(@Param("userId") String userId);
+
+    // Dành cho Job tự động dọn rác
+    @Modifying
+    @Query("DELETE FROM Notification n WHERE n.isRead = true AND n.createdAt < :cutoffDate")
+    void deleteOldReadNotifications(@Param("cutoffDate") java.time.LocalDateTime cutoffDate);
 }

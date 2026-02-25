@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.9.xsd">
+
+    <changeSet id="022-add-journey-color-avatar" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="journeys"/>
+            <not>
+                <columnExists tableName="journeys" columnName="theme_color"/>
+            </not>
+        </preConditions>
+
+        <comment>Adding theme_color and avatar columns to journeys table to sync with Box UI</comment>
+
+        <addColumn tableName="journeys">
+            <column name="theme_color" type="VARCHAR(20)"/>
+            
+            <column name="avatar" type="VARCHAR(255)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
