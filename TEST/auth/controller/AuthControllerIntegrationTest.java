@@ -40,6 +40,9 @@ import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.entity.UserStatus;
 import com.mindrevol.backend.modules.user.repository.RoleRepository;
 import com.mindrevol.backend.modules.user.repository.UserRepository;
+import com.mindrevol.backend.config.TestRedisConfig;
+
+import org.springframework.context.annotation.Import;
 
 import io.github.bucket4j.Bucket;
 import io.github.bucket4j.ConsumptionProbe;
@@ -48,6 +51,7 @@ import io.github.bucket4j.ConsumptionProbe;
 @AutoConfigureMockMvc
 @ActiveProfiles("test")
 @Transactional
+@Import(TestRedisConfig.class)
 class AuthControllerIntegrationTest {
 
     @Autowired private MockMvc mockMvc;
