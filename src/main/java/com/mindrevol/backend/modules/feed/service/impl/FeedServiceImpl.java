@@ -9,6 +9,7 @@ import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
+import com.mindrevol.backend.modules.checkin.repository.SavedCheckinRepository; // [THÊM MỚI]
 import com.mindrevol.backend.modules.feed.dto.AdFeedItemResponse;
 import com.mindrevol.backend.modules.feed.dto.FeedItemResponse;
 import com.mindrevol.backend.modules.feed.dto.FeedItemType;
@@ -36,6 +37,7 @@ public class FeedServiceImpl implements FeedService {
 
     private final RedisTemplate<String, Object> redisTemplate;
     private final CheckinRepository checkinRepository;
+    private final SavedCheckinRepository savedCheckinRepository; // [THÊM MỚI]
     private final CheckinMapper checkinMapper;
     private final UserBlockRepository userBlockRepository;
     private final UserRepository userRepository; 
@@ -87,19 +89,24 @@ public class FeedServiceImpl implements FeedService {
         Pageable pageable = PageRequest.of(page, limit);
         LocalDateTime cursor = LocalDateTime.now().plusSeconds(10); 
         
-        // [FIX BIÊN DỊCH]: Gọi method mới (5 tham số)
-        // Lấy 30 ngày cho Feed Service (để có nhiều data trộn quảng cáo hơn)
         LocalDateTime thirtyDaysAgo = LocalDateTime.now().minusDays(30);
 
         List<Checkin> dbCheckins = checkinRepository.findUnifiedFeedRecent(
                 userId, 
-                thirtyDaysAgo, // sinceDate 
+                thirtyDaysAgo,  
                 cursor, 
                 blockedIds, 
                 pageable
         );
         
-        List<CheckinResponse> responseList = dbCheckins.stream().map(checkinMapper::toResponse).collect(Collectors.toList());
+        // [ĐÃ SỬA] Thêm đoạn logic kiểm tra isSaved bằng cách sử dụng peek
+        List<CheckinResponse> responseList = dbCheckins.stream()
+                .map(checkinMapper::toResponse)
+                .peek(res -> {
+                    boolean isSaved = savedCheckinRepository.existsByUserIdAndCheckinId(userId, res.getId());
+                    res.setSaved(isSaved);
+                })
+                .collect(Collectors.toList());
 
         try {
             if (!responseList.isEmpty()) {

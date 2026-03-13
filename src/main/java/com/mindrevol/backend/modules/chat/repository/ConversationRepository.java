@@ -7,12 +7,11 @@ import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface ConversationRepository extends JpaRepository<Conversation, String> {
     
-    // [FIX] Trả về List và sắp xếp giảm dần theo thời gian (cái nào mới nhất lên đầu)
-    // Để xử lý trường hợp database bị duplicate dữ liệu
     @Query("SELECT c FROM Conversation c " +
            "WHERE (c.user1.id = :userId1 AND c.user2.id = :userId2) " +
            "OR (c.user1.id = :userId2 AND c.user2.id = :userId1) " +
@@ -23,6 +22,7 @@ public interface ConversationRepository extends JpaRepository<Conversation, Stri
            "JOIN FETCH c.user1 u1 " +
            "JOIN FETCH c.user2 u2 " +
            "WHERE (u1.id = :userId OR u2.id = :userId) " +
+           "AND c.boxId IS NULL " + // Lọc riêng chỉ lấy chat 1-1
            "AND NOT EXISTS ( " +
                "SELECT 1 FROM UserBlock ub " +
                "WHERE (ub.blocker.id = :userId AND (ub.blocked.id = u1.id OR ub.blocked.id = u2.id)) " +
@@ -30,4 +30,12 @@ public interface ConversationRepository extends JpaRepository<Conversation, Stri
            ") " +
            "ORDER BY c.lastMessageAt DESC")
     List<Conversation> findValidConversationsByUserId(@Param("userId") String userId);
+
+    @Query("SELECT c FROM Conversation c WHERE c.boxId = :boxId")
+    Optional<Conversation> findByBoxId(@Param("boxId") String boxId);
+
+    // [THÊM MỚI] Lấy danh sách các Group Chat của Box mà User tham gia
+    @Query("SELECT c FROM Conversation c WHERE c.boxId IN " +
+           "(SELECT bm.box.id FROM BoxMember bm WHERE bm.user.id = :userId)")
+    List<Conversation> findBoxConversationsByUserId(@Param("userId") String userId);
 }

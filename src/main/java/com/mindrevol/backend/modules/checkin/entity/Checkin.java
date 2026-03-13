@@ -42,17 +42,14 @@ public class Checkin extends BaseEntity {
     @Column(name = "image_url")
     private String imageUrl;
 
-    // [THÊM MỚI] Lưu ID của file trên ImageKit để phục vụ xóa
     @Column(name = "image_file_id")
     private String imageFileId;
 
     @Column(name = "thumbnail_url")
     private String thumbnailUrl;
 
-    // --- CÁC TRƯỜNG CONTEXT/PLATFORM (GIỮ NGUYÊN) ---
-
     @Column(length = 50) 
-    private String emotion; // Ví dụ: "🔥", "🌿", "CHILL"
+    private String emotion; 
 
     @Enumerated(EnumType.STRING)
     @Column(name = "activity_type")
@@ -64,6 +61,13 @@ public class Checkin extends BaseEntity {
 
     @Column(name = "location_name")
     private String locationName;
+
+    // [THÊM MỚI] Lưu tọa độ để vẽ lên Bản đồ
+    @Column(name = "latitude")
+    private Double latitude;
+
+    @Column(name = "longitude")
+    private Double longitude;
 
     @ElementCollection
     @CollectionTable(name = "checkin_tags", joinColumns = @JoinColumn(name = "checkin_id"))
@@ -78,8 +82,6 @@ public class Checkin extends BaseEntity {
 
     @Column(name = "video_url")
     private String videoUrl;
-
-    // ----------------------------------------
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)

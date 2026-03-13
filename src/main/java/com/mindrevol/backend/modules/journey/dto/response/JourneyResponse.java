@@ -5,6 +5,7 @@ import com.mindrevol.backend.modules.journey.entity.JourneyVisibility;
 import lombok.Builder;
 import lombok.Data;
 import java.time.LocalDate;
+import java.util.List;
 
 @Data
 @Builder
@@ -22,7 +23,7 @@ public class JourneyResponse {
     private String creatorId; 
     private int participantCount; 
     
-    // [THÊM MỚI] ID của Không gian chứa hành trình này
+    // ID của Không gian chứa hành trình này
     private String boxId; 
     
     private CurrentUserStatus currentUserStatus;
@@ -30,6 +31,9 @@ public class JourneyResponse {
     private String themeColor;
     
     private String avatar;
+
+    // [THÊM MỚI] Danh sách ảnh mới nhất để hiển thị lưới Locket
+    private List<String> previewImages;
 
     @Data
     @Builder

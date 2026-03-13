@@ -11,12 +11,14 @@ import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
+import com.mindrevol.backend.modules.checkin.dto.response.MapMarkerResponse; 
 import com.mindrevol.backend.modules.checkin.entity.*;
 import com.mindrevol.backend.modules.checkin.event.CheckinDeletedEvent;
 import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
+import com.mindrevol.backend.modules.checkin.repository.SavedCheckinRepository; // [THÊM MỚI]
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
 import com.mindrevol.backend.modules.journey.entity.Journey;
@@ -55,6 +57,7 @@ import java.util.stream.Collectors;
 public class CheckinServiceImpl implements CheckinService {
 
     private final CheckinRepository checkinRepository;
+    private final SavedCheckinRepository savedCheckinRepository; // [THÊM MỚI]
     private final JourneyRepository journeyRepository;
     private final JourneyParticipantRepository participantRepository;
     private final UserRepository userRepository;
@@ -76,9 +79,17 @@ public class CheckinServiceImpl implements CheckinService {
         return blockedIds;
     }
 
-    private CheckinResponse enrichResponse(CheckinResponse response) {
+    // [ĐÃ SỬA] Thêm tham số currentUserId
+    private CheckinResponse enrichResponse(CheckinResponse response, String currentUserId) {
         List<CheckinReactionDetailResponse> previews = reactionService.getPreviewReactions(response.getId());
         response.setLatestReactions(previews);
+        
+        // [THÊM MỚI] Kiểm tra xem bài này đã được lưu hay chưa
+        if (currentUserId != null) {
+            boolean isSaved = savedCheckinRepository.existsByUserIdAndCheckinId(currentUserId, response.getId());
+            response.setSaved(isSaved);
+        }
+        
         return response;
     }
 
@@ -105,9 +116,26 @@ public class CheckinServiceImpl implements CheckinService {
         String imageFileId = null;
         MediaType mediaType = MediaType.IMAGE;
 
+        Double exifLat = null;
+        Double exifLng = null;
+
         if (request.getFile() != null && !request.getFile().isEmpty()) {
             MultipartFile file = request.getFile();
             String contentType = file.getContentType();
+
+            if (request.getLatitude() == null && request.getLongitude() == null && 
+                contentType != null && !contentType.startsWith("video")) {
+                try {
+                    double[] coords = metadataService.extractCoordinates(file);
+                    if (coords != null && coords.length == 2) {
+                        exifLat = coords[0];
+                        exifLng = coords[1];
+                        log.info("Đã tìm thấy tọa độ EXIF từ ảnh: {}, {}", exifLat, exifLng);
+                    }
+                } catch (Exception e) {
+                    log.warn("Không thể đọc EXIF Data: {}", e.getMessage());
+                }
+            }
 
             if (contentType != null && contentType.startsWith("video")) {
                 if (!currentUser.isPremium()) {
@@ -148,6 +176,11 @@ public class CheckinServiceImpl implements CheckinService {
             throw new BadRequestException("Vui lòng tải lên hình ảnh hoặc video.");
         }
 
+        if (request.getLatitude() == null && exifLat != null) {
+            request.setLatitude(exifLat);
+            request.setLongitude(exifLng);
+        }
+
         return saveCheckinTransaction(currentUser, journey, participant, request, 
                                     imageUrl, videoUrl, imageFileId, mediaType, todayLocal);
     }
@@ -172,11 +205,9 @@ public class CheckinServiceImpl implements CheckinService {
             finalActivityName = null;
         }
 
-        // [FIXED] Xử lý emotion: Đảm bảo chuyển thành String
-        String finalEmotion = Emotion.NORMAL.name(); // Giá trị mặc định
+        String finalEmotion = Emotion.NORMAL.name(); 
         
         if (request.getEmotion() != null) {
-            // Dù request.getEmotion() trả về String hay Enum, .toString() đều an toàn
             finalEmotion = request.getEmotion().toString();
         }
 
@@ -189,11 +220,12 @@ public class CheckinServiceImpl implements CheckinService {
                 .videoUrl(videoUrl)
                 .imageFileId(imageFileId)
                 .thumbnailUrl(imageUrl)
-                // [FIXED] Truyền String vào builder
                 .emotion(finalEmotion)
                 .activityType(request.getActivityType() != null ? request.getActivityType() : ActivityType.DEFAULT)
                 .activityName(finalActivityName)
                 .locationName(request.getLocationName())
+                .latitude(request.getLatitude())
+                .longitude(request.getLongitude())
                 .tags(request.getTags() != null ? request.getTags() : new ArrayList<>())
                 .status(finalStatus)
                 .visibility(request.getVisibility() != null ? request.getVisibility() : CheckinVisibility.PUBLIC) 
@@ -263,7 +295,7 @@ public class CheckinServiceImpl implements CheckinService {
         }
         return checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journeyId, pageable)
                 .map(checkinMapper::toResponse)
-                .map(this::enrichResponse); 
+                .map(res -> enrichResponse(res, currentUser.getId())); // [ĐÃ SỬA]
     }
 
     @Override
@@ -273,7 +305,6 @@ public class CheckinServiceImpl implements CheckinService {
         Pageable pageable = PageRequest.of(0, limit);
         Set<String> excludedUserIds = getExcludedUserIds(currentUser.getId());
 
-        // Lọc 3 ngày
         LocalDateTime threeDaysAgo = LocalDateTime.now().minusDays(3);
 
         return checkinRepository.findUnifiedFeedRecent(
@@ -285,7 +316,7 @@ public class CheckinServiceImpl implements CheckinService {
                 )
                 .stream()
                 .map(checkinMapper::toResponse)
-                .map(this::enrichResponse)
+                .map(res -> enrichResponse(res, currentUser.getId())) // [ĐÃ SỬA]
                 .collect(Collectors.toList());
     }
 
@@ -302,7 +333,7 @@ public class CheckinServiceImpl implements CheckinService {
         return checkinRepository.findJourneyFeedByCursor(journeyId, cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
-                .map(this::enrichResponse)
+                .map(res -> enrichResponse(res, currentUser.getId())) // [ĐÃ SỬA]
                 .collect(Collectors.toList());
     }
     
@@ -428,5 +459,57 @@ public class CheckinServiceImpl implements CheckinService {
 
         participant.setCurrentStreak(streak);
         participantRepository.save(participant);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MapMarkerResponse> getMapMarkersForJourney(String journeyId, User currentUser) {
+        if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
+            throw new BadRequestException("Bạn không có quyền xem dữ liệu của hành trình này");
+        }
+
+        List<Checkin> checkins = checkinRepository.findMapMarkersByJourney(journeyId);
+        
+        return checkins.stream().map(c -> MapMarkerResponse.builder()
+                .checkinId(c.getId())
+                .latitude(c.getLatitude())
+                .longitude(c.getLongitude())
+                .thumbnailUrl(c.getThumbnailUrl())
+                .userAvatar(c.getUser().getAvatarUrl())
+                .fullname(c.getUser().getFullname())
+                .build()
+        ).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<MapMarkerResponse> getMapMarkersForBox(String boxId, User currentUser) {
+        List<Checkin> checkins = checkinRepository.findMapMarkersByBox(boxId);
+        
+        return checkins.stream().map(c -> MapMarkerResponse.builder()
+                .checkinId(c.getId())
+                .latitude(c.getLatitude())
+                .longitude(c.getLongitude())
+                .thumbnailUrl(c.getThumbnailUrl())
+                .userAvatar(c.getUser().getAvatarUrl())
+                .fullname(c.getUser().getFullname())
+                .build()
+        ).collect(Collectors.toList());
+    }
+    
+    @Override
+    @Transactional(readOnly = true)
+    public List<MapMarkerResponse> getMyMapMarkers(User currentUser) {
+        List<Checkin> checkins = checkinRepository.findMapMarkersByUser(currentUser.getId());
+        
+        return checkins.stream().map(c -> MapMarkerResponse.builder()
+                .checkinId(c.getId())
+                .latitude(c.getLatitude())
+                .longitude(c.getLongitude())
+                .thumbnailUrl(c.getThumbnailUrl())
+                .userAvatar(c.getUser().getAvatarUrl())
+                .fullname(c.getUser().getFullname())
+                .build()
+        ).collect(Collectors.toList());
     }
 }

@@ -27,5 +27,9 @@
     <include file="patches/021-add-box-module.xml" relativeToChangelogFile="true"/>
     
     <include file="patches/022-add-journey-color-avatar.xml" relativeToChangelogFile="true"/>
-
+    <include file="patches/023-add-box-id-to-conversation.xml" relativeToChangelogFile="true"/>
+    <include file="patches/024-add-coordinates-to-checkin.xml" relativeToChangelogFile="true"/>
+    <include file="patches/025-create-box-invitations.xml" relativeToChangelogFile="true"/>
+    <include file="patches/026-add-saved-checkins.xml" relativeToChangelogFile="true"/>
+    
 </databaseChangeLog>

@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.9.xsd">
+
+    <changeSet id="023-add-box-id-to-conversation" author="mindrevol">
+        <preConditions onFail="MARK_RAN">
+            <tableExists tableName="conversations"/>
+            <not>
+                <columnExists tableName="conversations" columnName="box_id"/>
+            </not>
+        </preConditions>
+
+        <addColumn tableName="conversations">
+            <column name="box_id" type="VARCHAR(36)"/>
+        </addColumn>
+        
+        <addUniqueConstraint tableName="conversations" columnNames="box_id" constraintName="uk_conversation_box"/>
+    </changeSet>
+
+</databaseChangeLog>

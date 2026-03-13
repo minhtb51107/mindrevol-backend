@@ -18,7 +18,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
+import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -35,15 +35,18 @@ public class SessionServiceImpl implements SessionService {
     private long refreshTokenExpirationMs;
 
     private static final String SESSION_PREFIX = "session:";
-    private static final String USER_SESSIONS_PREFIX = "user_sessions:";
+    private static final String USER_SESSIONS_PREFIX = "user_sessions_map:";
 
     @Override
     public JwtResponse createTokenAndSession(User user, HttpServletRequest request) {
         String accessToken = jwtUtil.generateAccessToken(user);
         String refreshToken = jwtUtil.generateRefreshToken(user);
         
+        // Định danh duy nhất cho cái "iPad" hoặc "Điện thoại" này
+        String sessionId = UUID.randomUUID().toString(); 
+        
         RedisUserSession redisSession = RedisUserSession.builder()
-                .id(UUID.randomUUID().toString())
+                .id(sessionId)
                 .email(user.getEmail())
                 .refreshToken(refreshToken)
                 .ipAddress(request.getRemoteAddr())
@@ -51,14 +54,16 @@ public class SessionServiceImpl implements SessionService {
                 .expiredAt(System.currentTimeMillis() + refreshTokenExpirationMs)
                 .build();
                 
+        // TỦ 1: Cất chi tiết Session (Key = Token)
         String redisKey = SESSION_PREFIX + refreshToken;
         redisTemplate.opsForValue().set(redisKey, redisSession, refreshTokenExpirationMs, TimeUnit.MILLISECONDS);
         
+        // TỦ 2 (Mục lục Hash): user_sessions:{email} -> Cất cặp [sessionId : refreshToken]
         String userSessionsKey = USER_SESSIONS_PREFIX + user.getEmail();
-        redisTemplate.opsForSet().add(userSessionsKey, refreshToken);
+        redisTemplate.opsForHash().put(userSessionsKey, sessionId, refreshToken);
         redisTemplate.expire(userSessionsKey, refreshTokenExpirationMs, TimeUnit.MILLISECONDS);
         
-        log.info("Saved session for user: {}", user.getEmail());
+        log.info("Saved session for user: {} with sessionId: {}", user.getEmail(), sessionId);
         return JwtResponse.builder().accessToken(accessToken).refreshToken(refreshToken).build();
     }
 
@@ -74,11 +79,15 @@ public class SessionServiceImpl implements SessionService {
         String newRefreshToken = jwtUtil.generateRefreshToken(user);
         
         String userSessionsKey = USER_SESSIONS_PREFIX + user.getEmail();
-        redisTemplate.opsForSet().remove(userSessionsKey, refreshToken);
+        
+        // Quan trọng: Giữ lại cái ID định danh của thiết bị cũ
+        String sessionId = session.getId(); 
+
+        // Xóa Token cũ ở Tủ 1
         redisTemplate.delete(redisKey);
         
         RedisUserSession newSession = RedisUserSession.builder()
-                .id(UUID.randomUUID().toString())
+                .id(sessionId)
                 .email(user.getEmail())
                 .refreshToken(newRefreshToken)
                 .ipAddress(session.getIpAddress())
@@ -86,9 +95,13 @@ public class SessionServiceImpl implements SessionService {
                 .expiredAt(System.currentTimeMillis() + refreshTokenExpirationMs)
                 .build();
                 
+        // Lưu Token mới vào Tủ 1
         String newRedisKey = SESSION_PREFIX + newRefreshToken;
         redisTemplate.opsForValue().set(newRedisKey, newSession, refreshTokenExpirationMs, TimeUnit.MILLISECONDS);
-        redisTemplate.opsForSet().add(userSessionsKey, newRefreshToken);
+        
+        // Cập nhật lại Tủ 2: Mở đúng ngăn tủ sessionId, đè cái chìa khóa mới vào (Vẫn là O(1))
+        redisTemplate.opsForHash().put(userSessionsKey, sessionId, newRefreshToken);
+        redisTemplate.expire(userSessionsKey, refreshTokenExpirationMs, TimeUnit.MILLISECONDS);
         
         return JwtResponse.builder().accessToken(newAccessToken).refreshToken(newRefreshToken).build();
     }
@@ -99,7 +112,9 @@ public class SessionServiceImpl implements SessionService {
         RedisUserSession session = (RedisUserSession) redisTemplate.opsForValue().get(redisKey);
         if (session != null) {
             String userSessionsKey = USER_SESSIONS_PREFIX + session.getEmail();
-            redisTemplate.opsForSet().remove(userSessionsKey, refreshToken);
+            // Xóa ở Tủ 2
+            redisTemplate.opsForHash().delete(userSessionsKey, session.getId());
+            // Xóa ở Tủ 1
             redisTemplate.delete(redisKey);
         }
     }
@@ -107,26 +122,29 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public List<UserSessionResponse> getAllSessions(String userEmail, String currentTokenRaw) {
         String userSessionsKey = USER_SESSIONS_PREFIX + userEmail;
-        Set<Object> refreshTokens = redisTemplate.opsForSet().members(userSessionsKey);
+        
+        // Lôi nguyên cuốn sổ mục lục ra
+        Map<Object, Object> sessionMap = redisTemplate.opsForHash().entries(userSessionsKey);
         List<UserSessionResponse> responses = new ArrayList<>();
         
-        if (refreshTokens != null) {
-            for (Object tokenObj : refreshTokens) {
-                String token = (String) tokenObj;
-                String sessionKey = SESSION_PREFIX + token;
-                RedisUserSession session = (RedisUserSession) redisTemplate.opsForValue().get(sessionKey);
-                
-                if (session != null) {
-                    responses.add(UserSessionResponse.builder()
-                            .id(session.getId())
-                            .ipAddress(session.getIpAddress())
-                            .userAgent(session.getUserAgent())
-                            .expiresAt(UserSessionResponse.mapToLocalDateTime(session.getExpiredAt()))
-                            .isCurrent(false) // Logic gốc của bạn để false
-                            .build());
-                } else {
-                    redisTemplate.opsForSet().remove(userSessionsKey, token);
-                }
+        for (Map.Entry<Object, Object> entry : sessionMap.entrySet()) {
+            String sessionId = (String) entry.getKey();
+            String token = (String) entry.getValue();
+            
+            String sessionKey = SESSION_PREFIX + token;
+            RedisUserSession session = (RedisUserSession) redisTemplate.opsForValue().get(sessionKey);
+            
+            if (session != null) {
+                responses.add(UserSessionResponse.builder()
+                        .id(session.getId())
+                        .ipAddress(session.getIpAddress())
+                        .userAgent(session.getUserAgent())
+                        .expiresAt(UserSessionResponse.mapToLocalDateTime(session.getExpiredAt()))
+                        .isCurrent(false) 
+                        .build());
+            } else {
+                // Nếu Token ở Tủ 1 đã tự bốc hơi vì hết hạn, ta tiện tay lau luôn dòng ghi chú ở Tủ 2
+                redisTemplate.opsForHash().delete(userSessionsKey, sessionId);
             }
         }
         return responses;
@@ -135,21 +153,21 @@ public class SessionServiceImpl implements SessionService {
     @Override
     public void revokeSession(String sessionId, String userEmail) {
         String userSessionsKey = USER_SESSIONS_PREFIX + userEmail;
-        Set<Object> refreshTokens = redisTemplate.opsForSet().members(userSessionsKey);
         
-        if (refreshTokens != null) {
-            for (Object tokenObj : refreshTokens) {
-                String token = (String) tokenObj;
-                String sessionKey = SESSION_PREFIX + token;
-                RedisUserSession session = (RedisUserSession) redisTemplate.opsForValue().get(sessionKey);
-                
-                if (session != null && session.getId().equals(sessionId)) {
-                    redisTemplate.delete(sessionKey);
-                    redisTemplate.opsForSet().remove(userSessionsKey, token);
-                    return;
-                }
-            }
+        // 🚀 BƯỚC 1: Tra Tủ Mục Lục bằng sessionId để lấy refreshToken (Độ phức tạp: O(1))
+        String token = (String) redisTemplate.opsForHash().get(userSessionsKey, sessionId);
+        
+        if (token != null) {
+            String sessionKey = SESSION_PREFIX + token;
+            
+            // 🚀 BƯỚC 2: Xóa Token ở Tủ 1 (Độ phức tạp: O(1))
+            redisTemplate.delete(sessionKey);
+            
+            // 🚀 BƯỚC 3: Xóa dòng mục lục ở Tủ 2 (Độ phức tạp: O(1))
+            redisTemplate.opsForHash().delete(userSessionsKey, sessionId);
+            return;
         }
+        
         throw new ResourceNotFoundException("Session not found");
     }
 }

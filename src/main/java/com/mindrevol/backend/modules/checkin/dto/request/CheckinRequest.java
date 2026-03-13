@@ -19,12 +19,17 @@ public class CheckinRequest {
 
     private String caption;
     
-    // Context Data (Optional)
-    private String emotion;            // Emoji hoặc Mood code
-    private ActivityType activityType; // Loại hoạt động
-    private String activityName;       // Tên hiển thị ("Học bài", "Chill")
-    private String locationName;       // Địa điểm check-in
-    private List<String> tags;         // Tag bạn bè hoặc hashtag
+    // Context Data
+    private String emotion;            
+    private ActivityType activityType; 
+    private String activityName;       
+    private String locationName;       
+    
+    // [THÊM MỚI] Nhận tọa độ từ Frontend gửi lên
+    private Double latitude;
+    private Double longitude;
+
+    private List<String> tags;         
     
     private CheckinStatus statusRequest = CheckinStatus.NORMAL; 
     private CheckinVisibility visibility = CheckinVisibility.PUBLIC;

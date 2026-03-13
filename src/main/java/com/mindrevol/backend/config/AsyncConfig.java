@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.core.task.TaskDecorator;
 import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
+import java.util.concurrent.ThreadPoolExecutor;
 
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -38,6 +39,7 @@ public class AsyncConfig {
         executor.setQueueCapacity(20);    
         executor.setThreadNamePrefix("Async-Img-");
         executor.setTaskDecorator(new MdcTaskDecorator());
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.initialize();
         return executor;
     }

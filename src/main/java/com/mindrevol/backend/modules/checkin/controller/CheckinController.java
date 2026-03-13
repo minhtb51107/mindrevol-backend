@@ -8,6 +8,7 @@ import com.mindrevol.backend.modules.checkin.dto.request.UpdateCheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
+import com.mindrevol.backend.modules.checkin.dto.response.MapMarkerResponse; // [THÊM MỚI]
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
 import com.mindrevol.backend.modules.user.entity.User;
@@ -50,7 +51,6 @@ public class CheckinController {
         return ResponseEntity.ok(ApiResponse.success(checkinService.getUnifiedFeed(currentUser, cursor, limit)));
     }
 
-    // [UUID] journeyId là String
     @GetMapping("/journey/{journeyId}")
     public ResponseEntity<ApiResponse<List<CheckinResponse>>> getJourneyFeed(
             @PathVariable String journeyId,
@@ -98,12 +98,11 @@ public class CheckinController {
     @PutMapping("/{checkinId}")
     public ResponseEntity<ApiResponse<CheckinResponse>> updateCheckin(
             @PathVariable String checkinId,
-            @RequestBody UpdateCheckinRequest request) { // [SỬA LỖI] Dùng DTO thay vì String
+            @RequestBody UpdateCheckinRequest request) {
         
         String userId = SecurityUtils.getCurrentUserId();
         User currentUser = userService.getUserById(userId);
         
-        // Lấy caption từ request object
         return ResponseEntity.ok(ApiResponse.success(
             checkinService.updateCheckin(checkinId, request.getCaption(), currentUser)
         ));
@@ -115,5 +114,27 @@ public class CheckinController {
         User currentUser = userService.getUserById(userId);
         checkinService.deleteCheckin(checkinId, currentUser);
         return ResponseEntity.ok(ApiResponse.success(null, "Xóa bài viết thành công"));
+    }
+
+    // =========================================================================
+    //  [THÊM MỚI] API BẢN ĐỒ KỶ NIỆM
+    // =========================================================================
+
+    @GetMapping("/map/journey/{journeyId}")
+    public ResponseEntity<ApiResponse<List<MapMarkerResponse>>> getMapMarkersForJourney(@PathVariable String journeyId) {
+        User currentUser = (User) SecurityUtils.getCurrentUser();
+        return ResponseEntity.ok(ApiResponse.success(checkinService.getMapMarkersForJourney(journeyId, currentUser)));
+    }
+
+    @GetMapping("/map/box/{boxId}")
+    public ResponseEntity<ApiResponse<List<MapMarkerResponse>>> getMapMarkersForBox(@PathVariable String boxId) {
+        User currentUser = (User) SecurityUtils.getCurrentUser();
+        return ResponseEntity.ok(ApiResponse.success(checkinService.getMapMarkersForBox(boxId, currentUser)));
+    }
+    
+    @GetMapping("/map/me")
+    public ResponseEntity<ApiResponse<List<MapMarkerResponse>>> getMyMapMarkers() {
+        User currentUser = (User) SecurityUtils.getCurrentUser();
+        return ResponseEntity.ok(ApiResponse.success(checkinService.getMyMapMarkers(currentUser)));
     }
 }

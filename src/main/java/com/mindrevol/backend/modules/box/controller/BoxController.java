@@ -6,8 +6,12 @@ import com.mindrevol.backend.modules.box.dto.request.CreateBoxRequest;
 import com.mindrevol.backend.modules.box.dto.request.UpdateBoxRequest;
 import com.mindrevol.backend.modules.box.dto.response.BoxMemberResponse;
 import com.mindrevol.backend.modules.box.dto.response.BoxResponse;
+import com.mindrevol.backend.modules.box.dto.response.BoxInvitationResponse;
+import com.mindrevol.backend.modules.box.entity.BoxInvitation;
+import com.mindrevol.backend.modules.box.repository.BoxInvitationRepository;
 import com.mindrevol.backend.modules.box.service.BoxService;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
+import com.mindrevol.backend.modules.journey.entity.JourneyInvitationStatus;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.Page;
@@ -15,25 +19,27 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+import java.util.stream.Collectors;
+
 @RestController
 @RequestMapping("/api/v1/boxes")
 @RequiredArgsConstructor
 public class BoxController {
 
     private final BoxService boxService;
+    private final BoxInvitationRepository boxInvitationRepository; // Phục vụ riêng cho API lấy list thư mời
 
     @PostMapping
     public ResponseEntity<ApiResponse<BoxResponse>> createBox(@Valid @RequestBody CreateBoxRequest request) {
         String userId = SecurityUtils.getCurrentUserId();
-        BoxResponse response = boxService.createBox(request, userId);
-        return ResponseEntity.ok(ApiResponse.success(response, "Tạo không gian thành công"));
+        return ResponseEntity.ok(ApiResponse.success(boxService.createBox(request, userId), "Tạo không gian thành công"));
     }
 
     @GetMapping("/{id}")
     public ResponseEntity<ApiResponse<BoxResponse>> getBoxDetails(@PathVariable String id) {
         String userId = SecurityUtils.getCurrentUserId();
-        BoxResponse response = boxService.getBoxDetails(id, userId);
-        return ResponseEntity.ok(ApiResponse.success(response, "Lấy thông tin thành công"));
+        return ResponseEntity.ok(ApiResponse.success(boxService.getBoxDetails(id, userId), "Lấy thông tin thành công"));
     }
 
     @GetMapping("/me")
@@ -41,8 +47,7 @@ public class BoxController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         String userId = SecurityUtils.getCurrentUserId();
-        Page<BoxResponse> response = boxService.getMyBoxes(userId, PageRequest.of(page, size));
-        return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách không gian thành công"));
+        return ResponseEntity.ok(ApiResponse.success(boxService.getMyBoxes(userId, PageRequest.of(page, size)), "Lấy danh sách không gian thành công"));
     }
 
     @PutMapping("/{id}")
@@ -50,8 +55,7 @@ public class BoxController {
             @PathVariable String id,
             @Valid @RequestBody UpdateBoxRequest request) {
         String userId = SecurityUtils.getCurrentUserId();
-        BoxResponse response = boxService.updateBox(id, request, userId);
-        return ResponseEntity.ok(ApiResponse.success(response, "Cập nhật thành công"));
+        return ResponseEntity.ok(ApiResponse.success(boxService.updateBox(id, request, userId), "Cập nhật thành công"));
     }
 
     @PutMapping("/{id}/archive")
@@ -83,8 +87,7 @@ public class BoxController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "50") int size) {
         String userId = SecurityUtils.getCurrentUserId();
-        Page<BoxMemberResponse> response = boxService.getBoxMembers(id, userId, PageRequest.of(page, size));
-        return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách thành viên thành công"));
+        return ResponseEntity.ok(ApiResponse.success(boxService.getBoxMembers(id, userId, PageRequest.of(page, size)), "Lấy danh sách thành viên thành công"));
     }
 
     @GetMapping("/{id}/journeys")
@@ -93,13 +96,34 @@ public class BoxController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         String userId = SecurityUtils.getCurrentUserId();
-        Page<JourneyResponse> response = boxService.getBoxJourneys(id, userId, PageRequest.of(page, size));
-        return ResponseEntity.ok(ApiResponse.success(response, "Lấy danh sách hành trình thành công"));
+        return ResponseEntity.ok(ApiResponse.success(boxService.getBoxJourneys(id, userId, PageRequest.of(page, size)), "Lấy danh sách hành trình thành công"));
     }
 
     // ==========================================
-    // CÁC API QUẢN LÝ THÀNH VIÊN (ĐÃ SỬA)
+    // CÁC API QUẢN LÝ LỜI MỜI (ĐÃ CHUYỂN SANG DB)
     // ==========================================
+
+    // [THÊM MỚI] Lấy danh sách lời mời đang chờ xử lý của User
+    @GetMapping("/invitations/me")
+    public ResponseEntity<ApiResponse<List<BoxInvitationResponse>>> getMyPendingInvitations() {
+        String userId = SecurityUtils.getCurrentUserId();
+        List<BoxInvitation> invitations = boxInvitationRepository.findAllByInviteeIdAndStatusOrderByCreatedAtDesc(userId, JourneyInvitationStatus.PENDING);
+        
+        List<BoxInvitationResponse> responseList = invitations.stream().map(inv -> BoxInvitationResponse.builder()
+                .id(inv.getId())
+                .boxId(inv.getBox().getId())
+                .boxName(inv.getBox().getName())
+                .boxAvatar(inv.getBox().getAvatar())
+                .inviterId(inv.getInviter().getId())
+                .inviterName(inv.getInviter().getFullname())
+                .inviterAvatar(inv.getInviter().getAvatarUrl())
+                .status(inv.getStatus().name())
+                .sentAt(inv.getCreatedAt())
+                .build()
+        ).collect(Collectors.toList());
+
+        return ResponseEntity.ok(ApiResponse.success(responseList, "Lấy danh sách lời mời thành công"));
+    }
 
     @PostMapping("/{id}/invite")
     public ResponseEntity<ApiResponse<String>> inviteMember(

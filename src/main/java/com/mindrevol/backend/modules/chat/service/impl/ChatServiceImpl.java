@@ -2,6 +2,8 @@ package com.mindrevol.backend.modules.chat.service.impl;
 
 import com.mindrevol.backend.common.exception.BadRequestException;
 import com.mindrevol.backend.common.exception.ResourceNotFoundException;
+import com.mindrevol.backend.modules.box.entity.Box;
+import com.mindrevol.backend.modules.box.repository.BoxRepository; // [THÊM MỚI]
 import com.mindrevol.backend.modules.chat.dto.event.MessageReadEvent;
 import com.mindrevol.backend.modules.chat.dto.request.SendMessageRequest;
 import com.mindrevol.backend.modules.chat.dto.response.ConversationResponse;
@@ -34,6 +36,7 @@ public class ChatServiceImpl implements ChatService {
     private final MessageRepository messageRepository;
     private final ConversationRepository conversationRepository;
     private final UserRepository userRepository;
+    private final BoxRepository boxRepository; // [THÊM MỚI]
     private final ChatMapper chatMapper;
     private final SimpMessagingTemplate messagingTemplate;
     private final UserBlockService userBlockService;
@@ -42,29 +45,34 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional
     public MessageResponse sendMessage(String senderId, SendMessageRequest request) { 
-        String receiverId = request.getReceiverId(); 
-        
-        if (receiverId == null || receiverId.isEmpty()) {
-             throw new BadRequestException("Receiver ID không được để trống");
-        }
-
-        if (userBlockService.isBlocked(receiverId, senderId)) {
-            throw new BadRequestException("Bạn không thể gửi tin nhắn cho người này.");
-        }
-
-        User sender = userRepository.getReferenceById(senderId);
-        User receiver = userRepository.getReferenceById(receiverId);
-
-        // Kiểm tra hội thoại đã tồn tại chưa
-        List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
         Conversation conversation;
-        if (existingConvs.isEmpty()) {
-            conversation = createNewConversation(sender, receiver);
-        } else {
-            // Lấy cái mới nhất để tiếp tục chat
-            conversation = existingConvs.get(0);
+        User sender = userRepository.getReferenceById(senderId);
+        User receiver = null;
+
+        // 1. NẾU CÓ CONVERSATION_ID (Ưu tiên cho Box Chat và Chat đã tồn tại)
+        if (request.getConversationId() != null && !request.getConversationId().isEmpty()) {
+            conversation = conversationRepository.findById(request.getConversationId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy cuộc trò chuyện"));
+            
+            // Lấy tạm receiver để lưu DB (với Box Chat thì không quan trọng lắm)
+            receiver = conversation.getUser1().getId().equals(senderId) ? conversation.getUser2() : conversation.getUser1();
+        } 
+        // 2. NẾU CHƯA CÓ (Tạo mới chat 1-1)
+        else {
+            String receiverId = request.getReceiverId(); 
+            if (receiverId == null || receiverId.isEmpty()) throw new BadRequestException("Receiver ID không được để trống");
+            if (userBlockService.isBlocked(receiverId, senderId)) throw new BadRequestException("Bạn không thể gửi tin nhắn cho người này.");
+
+            receiver = userRepository.getReferenceById(receiverId);
+            List<Conversation> existingConvs = conversationRepository.findByUsers(senderId, receiverId);
+            if (existingConvs.isEmpty()) {
+                conversation = createNewConversation(sender, receiver);
+            } else {
+                conversation = existingConvs.get(0);
+            }
         }
 
+        // Tạo và lưu tin nhắn
         Message message = Message.builder()
                 .conversation(conversation)
                 .sender(sender)
@@ -78,17 +86,14 @@ public class ChatServiceImpl implements ChatService {
 
         message = messageRepository.save(message);
 
+        // Cập nhật cuộc trò chuyện
         String previewContent = message.getType() == MessageType.IMAGE ? "[Hình ảnh]" : message.getContent();
         conversation.setLastMessageContent(previewContent);
         conversation.setLastMessageAt(LocalDateTime.now());
         conversation.setLastSenderId(senderId);
-        
         conversationRepository.save(conversation);
 
         MessageResponse response = chatMapper.toResponse(message);
-
-        // [FIX REALTIME] Gửi vào Topic chung của Conversation.
-        // Frontend (cả người gửi và nhận) sẽ subscribe vào /topic/chat.{id}
         String destination = "/topic/chat." + conversation.getId();
         messagingTemplate.convertAndSend(destination, response);
 
@@ -109,16 +114,26 @@ public class ChatServiceImpl implements ChatService {
     @Override
     @Transactional(readOnly = true)
     public List<ConversationResponse> getUserConversations(String userId) { 
-        List<Conversation> conversations = conversationRepository.findValidConversationsByUserId(userId);
+        List<Conversation> privateConvs = conversationRepository.findValidConversationsByUserId(userId);
+        List<Conversation> boxConvs = conversationRepository.findBoxConversationsByUserId(userId);
+        
+        java.util.Set<Conversation> allConvs = new java.util.HashSet<>(privateConvs);
+        allConvs.addAll(boxConvs);
 
-        return conversations.stream().map(conv -> mapToConversationResponse(conv, userId)).collect(Collectors.toList());
+        return allConvs.stream()
+                .sorted((c1, c2) -> {
+                    if (c1.getLastMessageAt() == null && c2.getLastMessageAt() == null) return 0;
+                    if (c1.getLastMessageAt() == null) return 1;
+                    if (c2.getLastMessageAt() == null) return -1;
+                    return c2.getLastMessageAt().compareTo(c1.getLastMessageAt());
+                })
+                .map(conv -> mapToConversationResponse(conv, userId))
+                .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public Page<MessageResponse> getConversationMessages(String conversationId, Pageable pageable) { 
-        // Lưu ý: Backend vẫn trả về DESC (mới nhất trước) để phân trang đúng.
-        // Frontend sẽ chịu trách nhiệm đảo ngược lại để hiển thị.
         return messageRepository.findByConversationIdOrderByCreatedAtDesc(conversationId, pageable)
                 .map(chatMapper::toResponse);
     }
@@ -231,8 +246,22 @@ public class ChatServiceImpl implements ChatService {
 
         long unread = messageRepository.countUnreadMessages(conv.getId(), currentUserId);
 
+        // [THÊM MỚI] Tra cứu Tên và Avatar của Box
+        String boxName = null;
+        String boxAvatar = null;
+        if (conv.getBoxId() != null) {
+            Box box = boxRepository.findById(conv.getBoxId()).orElse(null);
+            if (box != null) {
+                boxName = box.getName();
+                boxAvatar = box.getAvatar();
+            }
+        }
+
         return ConversationResponse.builder()
                 .id(conv.getId())
+                .boxId(conv.getBoxId())
+                .boxName(boxName) // [THÊM MỚI]
+                .boxAvatar(boxAvatar) // [THÊM MỚI]
                 .partner(partnerDto)
                 .lastMessageContent(conv.getLastMessageContent())
                 .lastMessageAt(conv.getLastMessageAt())
@@ -240,5 +269,95 @@ public class ChatServiceImpl implements ChatService {
                 .unreadCount(unread)
                 .status(conv.getStatus() != null ? conv.getStatus().name() : "ACTIVE")
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public Conversation createBoxConversation(String boxId, String boxName, String creatorId) {
+        User creator = userRepository.findById(creatorId)
+                .orElseThrow(() -> new ResourceNotFoundException("Creator not found"));
+
+        Conversation conv = Conversation.builder()
+                .user1(creator) 
+                .user2(creator) 
+                .boxId(boxId)
+                .lastMessageContent("Nhóm chat đã được tạo") // [ĐÃ ĐỔI] Cho đỡ sến và chuyên nghiệp hơn
+                .lastMessageAt(LocalDateTime.now())
+                .status(ConversationStatus.ACTIVE)
+                .build();
+
+        return conversationRepository.save(conv);
+    }
+
+    @Override
+    @Transactional
+    public void updateBoxConversationInfo(String boxId, String newName) {
+        Conversation conv = conversationRepository.findByBoxId(boxId).orElse(null);
+        if (conv != null) {
+            // Tạm thời chưa cần update vào DTO vì hàm mapToConversationResponse đã tự động Join ra tên mới nhất
+        }
+    }
+
+    @Override
+    @Transactional
+    public void addUserToBoxConversation(String boxId, String userId) {
+        Conversation conv = conversationRepository.findByBoxId(boxId).orElse(null);
+        if (conv == null) return;
+        
+        User systemOrCreator = conv.getUser1(); 
+        User newUser = userRepository.findById(userId).orElseThrow();
+        
+        Message message = Message.builder()
+                .conversation(conv)
+                .sender(systemOrCreator)
+                .receiver(systemOrCreator) 
+                .content(newUser.getFullname() + " đã tham gia không gian.")
+                .type(MessageType.SYSTEM) 
+                .deliveryStatus(MessageDeliveryStatus.SENT)
+                .build();
+                
+        messageRepository.save(message);
+
+        conv.setLastMessageContent(message.getContent());
+        conv.setLastMessageAt(LocalDateTime.now());
+        conversationRepository.save(conv);
+        
+        messagingTemplate.convertAndSend("/topic/chat." + conv.getId(), chatMapper.toResponse(message));
+    }
+
+    @Override
+    @Transactional
+    public void removeUserFromBoxConversation(String boxId, String userId) {
+        Conversation conv = conversationRepository.findByBoxId(boxId).orElse(null);
+        if (conv == null) return;
+
+        User systemOrCreator = conv.getUser1();
+        User leftUser = userRepository.findById(userId).orElseThrow();
+
+        Message message = Message.builder()
+                .conversation(conv)
+                .sender(systemOrCreator)
+                .receiver(systemOrCreator)
+                .content(leftUser.getFullname() + " đã rời khỏi không gian.")
+                .type(MessageType.SYSTEM)
+                .deliveryStatus(MessageDeliveryStatus.SENT)
+                .build();
+                
+        messageRepository.save(message);
+
+        conv.setLastMessageContent(message.getContent());
+        conv.setLastMessageAt(LocalDateTime.now());
+        conversationRepository.save(conv);
+
+        messagingTemplate.convertAndSend("/topic/chat." + conv.getId(), chatMapper.toResponse(message));
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public ConversationResponse getBoxConversation(String boxId, String userId) {
+        Conversation conv = conversationRepository.findByBoxId(boxId)
+                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy cuộc trò chuyện của Không gian này"));
+        
+        return mapToConversationResponse(conv, userId);
     }
 }

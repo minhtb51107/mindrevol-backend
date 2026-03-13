@@ -8,14 +8,19 @@ import java.time.LocalDateTime;
 @Data
 @Builder
 public class ConversationResponse {
-    private String id; // [SỬA] Long -> String
+    private String id; 
     
     private UserSummaryResponse partner; 
     
     private String lastMessageContent;
     private LocalDateTime lastMessageAt;
-    private String lastSenderId; // [SỬA] Long -> String
+    private String lastSenderId; 
     
     private long unreadCount;
     private String status;
+    private String boxId;
+
+    // [THÊM MỚI] Gửi kèm Tên và Avatar của Box xuống cho UI hiển thị
+    private String boxName;
+    private String boxAvatar;
 }

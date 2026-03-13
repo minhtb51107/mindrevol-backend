@@ -35,17 +35,21 @@ public class Conversation extends BaseEntity {
     private LocalDateTime lastMessageAt;
 
     @Column(name = "last_sender_id")
-    private String lastSenderId; // [SỬA] Long -> String
+    private String lastSenderId; 
 
     // --- Read Receipts ---
     @Column(name = "user1_last_read_msg_id")
-    private String user1LastReadMessageId; // [SỬA] Long -> String
+    private String user1LastReadMessageId; 
 
     @Column(name = "user2_last_read_msg_id")
-    private String user2LastReadMessageId; // [SỬA] Long -> String
+    private String user2LastReadMessageId; 
 
     @Enumerated(EnumType.STRING)
     @Column(name = "status")
     @Builder.Default
     private ConversationStatus status = ConversationStatus.ACTIVE;
+
+    // [THÊM MỚI] Gắn liên kết với Box. Nếu là Chat 1-1 thì trường này null.
+    @Column(name = "box_id")
+    private String boxId;
 }

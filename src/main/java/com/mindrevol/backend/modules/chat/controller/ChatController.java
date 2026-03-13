@@ -23,21 +23,18 @@ public class ChatController {
 
     private final ChatService chatService;
 
-    // 1. Gửi tin nhắn
     @PostMapping("/send")
     public ResponseEntity<ApiResponse<MessageResponse>> sendMessage(@RequestBody SendMessageRequest request) {
         String userId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(chatService.sendMessage(userId, request)));
     }
 
-    // 2. Lấy danh sách Inbox (Đã nâng cấp trả về DTO xịn)
     @GetMapping("/conversations")
     public ResponseEntity<ApiResponse<List<ConversationResponse>>> getConversations() {
         String userId = SecurityUtils.getCurrentUserId();
         return ResponseEntity.ok(ApiResponse.success(chatService.getUserConversations(userId)));
     }
 
-    // 3. Lấy tin nhắn chi tiết
     @GetMapping("/messages/{partnerId}")
     public ResponseEntity<ApiResponse<Page<MessageResponse>>> getMessages(
             @PathVariable String partnerId,
@@ -46,7 +43,6 @@ public class ChatController {
         return ResponseEntity.ok(ApiResponse.success(chatService.getMessagesWithUser(userId, partnerId, pageable)));
     }
 
-    // 4. Đánh dấu đã đọc
     @PostMapping("/conversations/{conversationId}/read")
     public ResponseEntity<ApiResponse<Void>> markAsRead(@PathVariable String conversationId) {
         String userId = SecurityUtils.getCurrentUserId();
@@ -60,5 +56,24 @@ public class ChatController {
         String senderId = SecurityUtils.getCurrentUserId();
         ConversationResponse response = chatService.getOrCreateConversation(senderId, receiverId);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // [THÊM MỚI] Lấy thông tin Group Chat từ Box ID
+    @GetMapping("/conversations/box/{boxId}")
+    public ResponseEntity<ApiResponse<ConversationResponse>> getBoxConversation(@PathVariable String boxId) {
+        String userId = SecurityUtils.getCurrentUserId();
+        ConversationResponse response = chatService.getBoxConversation(boxId, userId);
+        return ResponseEntity.ok(ApiResponse.success(response));
+    }
+    
+ // [THÊM MỚI] Lấy tin nhắn theo ID cuộc trò chuyện (Hỗ trợ tốt cho cả Box Chat)
+    @GetMapping("/conversations/{conversationId}/messages")
+    public ApiResponse<Page<MessageResponse>> getConversationMessages(
+            @PathVariable String conversationId,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        
+        Pageable pageable = org.springframework.data.domain.PageRequest.of(page, size);
+        return ApiResponse.success(chatService.getConversationMessages(conversationId, pageable));
     }
 }

@@ -6,6 +6,7 @@ import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyInvitationResponse;
 import com.mindrevol.backend.modules.journey.entity.*;
 import com.mindrevol.backend.modules.journey.event.JourneyJoinedEvent;
+import com.mindrevol.backend.modules.journey.mapper.JourneyInvitationMapper;
 import com.mindrevol.backend.modules.journey.mapper.JourneyMapper;
 import com.mindrevol.backend.modules.journey.repository.JourneyInvitationRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
@@ -38,6 +39,7 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
     private final UserRepository userRepository;
     private final NotificationService notificationService;
     private final JourneyMapper journeyMapper;
+    private final JourneyInvitationMapper journeyInvitationMapper;
     private final JourneyRequestRepository journeyRequestRepository;
     private final ApplicationEventPublisher eventPublisher;
 
@@ -166,7 +168,7 @@ public class JourneyInvitationServiceImpl implements JourneyInvitationService {
     @Override
     public Page<JourneyInvitationResponse> getMyPendingInvitations(User currentUser, Pageable pageable) {
         return invitationRepository.findPendingInvitationsForUser(currentUser.getId(), pageable)
-                .map(journeyMapper::toInvitationResponse);
+                .map(journeyInvitationMapper::toResponse);
     }
 
     private void cleanupPendingRequests(String journeyId, String userId) {

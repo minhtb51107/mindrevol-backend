@@ -3,6 +3,7 @@ package com.mindrevol.backend.modules.checkin.service;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
+import com.mindrevol.backend.modules.checkin.dto.response.MapMarkerResponse; // [THÊM MỚI]
 import com.mindrevol.backend.modules.user.entity.User;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -14,7 +15,6 @@ public interface CheckinService {
 
     CheckinResponse createCheckin(CheckinRequest request, User currentUser);
 
-    // [UUID] Long -> String
     Page<CheckinResponse> getJourneyFeed(String journeyId, Pageable pageable, User currentUser);
 
     CommentResponse postComment(String checkinId, String content, User currentUser);
@@ -28,4 +28,12 @@ public interface CheckinService {
     CheckinResponse updateCheckin(String checkinId, String caption, User currentUser);
 
     void deleteCheckin(String checkinId, User currentUser);
+
+    // [THÊM MỚI]
+    List<MapMarkerResponse> getMapMarkersForJourney(String journeyId, User currentUser);
+    
+    // [THÊM MỚI]
+    List<MapMarkerResponse> getMapMarkersForBox(String boxId, User currentUser);
+    
+    List<MapMarkerResponse> getMyMapMarkers(User currentUser);
 }
