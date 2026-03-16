@@ -23,12 +23,14 @@ public interface JourneyService {
     void approveRequest(String journeyId, String requestId, String ownerId);
     void rejectRequest(String journeyId, String requestId, String ownerId);
     
-    // --- Method cho Profile ---
+    // --- Các API dùng cho Profile ---
+    List<UserActiveJourneyResponse> getUserPublicJourneys(String targetUserId, String currentUserId);
+    List<UserActiveJourneyResponse> getUserPrivateJourneys(String targetUserId, String currentUserId);
+
+    // --- Cập nhật lại API dùng cho Modal/Dashboard ---
     List<UserActiveJourneyResponse> getUserActiveJourneys(String userId);
-    
-    // [MỚI] Thêm hàm này để lấy hành trình đã kết thúc
-    List<UserActiveJourneyResponse> getUserFinishedJourneys(String userId);
 
     JourneyAlertResponse getJourneyAlerts(String userId);
     List<UserSummaryResponse> getInvitableFriends(String journeyId, String userId);
+    void toggleProfileVisibility(String journeyId, String userId);
 }

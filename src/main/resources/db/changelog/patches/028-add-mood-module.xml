@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.17.xsd">
+
+    <changeSet id="028-add-mood-module" author="system">
+        
+        <createTable tableName="moods">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="box_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="icon" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="message" type="VARCHAR(100)"/>
+            <column name="expires_at" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+            <column name="deleted_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <createTable tableName="mood_reactions">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true"/>
+            </column>
+            <column name="mood_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="emoji" type="VARCHAR(50)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP"/>
+            <column name="updated_at" type="TIMESTAMP"/>
+            <column name="deleted_at" type="TIMESTAMP"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="moods" baseColumnNames="user_id" constraintName="fk_moods_user" referencedTableName="users" referencedColumnNames="id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint baseTableName="moods" baseColumnNames="box_id" constraintName="fk_moods_box" referencedTableName="boxes" referencedColumnNames="id" onDelete="CASCADE"/>
+        
+        <addForeignKeyConstraint baseTableName="mood_reactions" baseColumnNames="mood_id" constraintName="fk_mood_reactions_mood" referencedTableName="moods" referencedColumnNames="id" onDelete="CASCADE"/>
+        <addForeignKeyConstraint baseTableName="mood_reactions" baseColumnNames="user_id" constraintName="fk_mood_reactions_user" referencedTableName="users" referencedColumnNames="id" onDelete="CASCADE"/>
+
+        <createIndex tableName="moods" indexName="idx_mood_box"><column name="box_id"/></createIndex>
+        <createIndex tableName="moods" indexName="idx_mood_expires"><column name="expires_at"/></createIndex>
+        <addUniqueConstraint tableName="mood_reactions" columnNames="mood_id, user_id" constraintName="uq_mood_reaction_user"/>
+
+    </changeSet>
+</databaseChangeLog>

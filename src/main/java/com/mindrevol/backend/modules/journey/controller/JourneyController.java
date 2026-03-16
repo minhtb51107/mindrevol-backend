@@ -3,18 +3,12 @@ package com.mindrevol.backend.modules.journey.controller;
 import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.journey.dto.request.CreateJourneyRequest;
-import com.mindrevol.backend.modules.journey.dto.request.InviteFriendRequest;
-import com.mindrevol.backend.modules.journey.dto.request.JoinJourneyRequest;
-import com.mindrevol.backend.modules.journey.dto.request.UpdateJourneySettingsRequest;
 import com.mindrevol.backend.modules.journey.dto.response.*;
 import com.mindrevol.backend.modules.journey.service.JourneyService;
 import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 import io.swagger.v3.oas.annotations.Operation;
-import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -26,29 +20,47 @@ public class JourneyController {
 
     private final JourneyService journeyService;
 
-    // [MỚI] API lấy thông tin chấm đỏ (Alerts)
     @GetMapping("/alerts")
     public ApiResponse<JourneyAlertResponse> getAlerts() {
         String userId = SecurityUtils.getCurrentUserId();
         return ApiResponse.success(journeyService.getJourneyAlerts(userId));
     }
-    
-    @GetMapping("/users/{userId}/finished")
-    @Operation(summary = "Lấy các hành trình đã kết thúc của user (cho Profile)")
-    // 1. Đổi kiểu trả về thành ApiResponse
-    public ApiResponse<List<UserActiveJourneyResponse>> getUserFinishedJourneys(@PathVariable String userId) {
-        // 2. Dùng ApiResponse.success() để bọc dữ liệu
-        return ApiResponse.success(journeyService.getUserFinishedJourneys(userId));
+
+    // --- API CHO MODAL/DASHBOARD ---
+    @GetMapping("/users/{userId}/active")
+    @Operation(summary = "Lấy toàn bộ hành trình đang hoạt động (cho Modal/Trang chủ)")
+    public ApiResponse<List<UserActiveJourneyResponse>> getUserActiveJourneys(@PathVariable String userId) {
+        if ("me".equalsIgnoreCase(userId)) {
+            String currentUserId = SecurityUtils.getCurrentUserId();
+            return ApiResponse.success(journeyService.getUserActiveJourneys(currentUserId));
+        }
+        return ApiResponse.success(journeyService.getUserActiveJourneys(userId));
     }
 
-    // [API CŨ] Lấy danh sách bạn bè mời (đã lọc)
+    // --- API CHO PROFILE THEO QUYỀN RIÊNG TƯ ---
+    @GetMapping("/users/{userId}/public")
+    @Operation(summary = "Lấy các hành trình CÔNG KHAI của user (cho Profile)")
+    public ApiResponse<List<UserActiveJourneyResponse>> getUserPublicJourneys(@PathVariable String userId) {
+        String currentUserId = SecurityUtils.getCurrentUserId();
+        String targetId = "me".equalsIgnoreCase(userId) ? currentUserId : userId;
+        return ApiResponse.success(journeyService.getUserPublicJourneys(targetId, currentUserId));
+    }
+
+    @GetMapping("/users/{userId}/private")
+    @Operation(summary = "Lấy các hành trình RIÊNG TƯ của user (cho Profile)")
+    public ApiResponse<List<UserActiveJourneyResponse>> getUserPrivateJourneys(@PathVariable String userId) {
+        String currentUserId = SecurityUtils.getCurrentUserId();
+        String targetId = "me".equalsIgnoreCase(userId) ? currentUserId : userId;
+        return ApiResponse.success(journeyService.getUserPrivateJourneys(targetId, currentUserId));
+    }
+    // --------------------------------------------------
+
     @GetMapping("/{id}/friends-invitable")
     public ApiResponse<List<UserSummaryResponse>> getInvitableFriends(@PathVariable String id) {
         String userId = SecurityUtils.getCurrentUserId();
         return ApiResponse.success(journeyService.getInvitableFriends(id, userId));
     }
 
-    // --- CÁC API CŨ GIỮ NGUYÊN (Create, Join, GetMe...) ---
     @PostMapping
     public ApiResponse<JourneyResponse> createJourney(@Valid @RequestBody CreateJourneyRequest request) {
         String userId = SecurityUtils.getCurrentUserId();
@@ -71,18 +83,6 @@ public class JourneyController {
     public ApiResponse<List<JourneyResponse>> getMyJourneys() {
         String userId = SecurityUtils.getCurrentUserId();
         return ApiResponse.success(journeyService.getMyJourneys(userId));
-    }
-
-    // [SỬA LỖI TẠI ĐÂY]
-    // Thay đổi kiểu trả về từ ApiResponse<List<JourneyResponse>> 
-    // thành ApiResponse<List<UserActiveJourneyResponse>>
-    @GetMapping("/users/{userId}/active")
-    public ApiResponse<List<UserActiveJourneyResponse>> getUserActiveJourneys(@PathVariable String userId) {
-        if ("me".equalsIgnoreCase(userId)) {
-            String currentUserId = SecurityUtils.getCurrentUserId();
-            return ApiResponse.success(journeyService.getUserActiveJourneys(currentUserId));
-        }
-        return ApiResponse.success(journeyService.getUserActiveJourneys(userId));
     }
 
     @GetMapping("/{id}/requests/pending")
@@ -143,4 +143,14 @@ public class JourneyController {
         journeyService.transferOwnership(id, currentUserId, newOwnerId);
         return ApiResponse.success(null, "Đã chuyển quyền sở hữu");
     }
+    
+ // ... Thêm cục này vào bên trong Controller
+    @PatchMapping("/{id}/profile-visibility")
+    @Operation(summary = "Bật/Tắt hiển thị Hành trình trên Trang cá nhân")
+    public ApiResponse<Void> toggleProfileVisibility(@PathVariable String id) {
+        String userId = SecurityUtils.getCurrentUserId();
+        journeyService.toggleProfileVisibility(id, userId);
+        return ApiResponse.success(null, "Đã cập nhật trạng thái hiển thị trên Trang cá nhân");
+    }
+// ...
 }

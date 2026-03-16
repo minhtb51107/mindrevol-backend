@@ -27,35 +27,21 @@ public interface CheckinRepository extends JpaRepository<Checkin, String> {
     
     List<Checkin> findAllByUserIdOrderByCreatedAtDesc(String userId);
 
+    // [THÊM MỚI - LOGIC TÀNG HÌNH]: Nếu người xem là người lạ, chỉ lấy ảnh của ai bật isProfileVisible = true
     @Query("SELECT c FROM Checkin c " +
-           "JOIN FETCH c.user u " +
-           "WHERE c.journey.id IN (SELECT p.journey.id FROM JourneyParticipant p WHERE p.user.id = :userId) " +
-           "AND c.createdAt >= :sinceDate " + 
-           "AND c.createdAt <= :cursor " +    
-           "AND u.id NOT IN :excludedUserIds " + 
-           "ORDER BY c.createdAt DESC")
-    List<Checkin> findUnifiedFeedRecent(@Param("userId") String userId, 
-                                        @Param("sinceDate") LocalDateTime sinceDate,
-                                        @Param("cursor") LocalDateTime cursor, 
-                                        @Param("excludedUserIds") Collection<String> excludedUserIds, 
-                                        Pageable pageable);
-
-    @Query("SELECT c FROM Checkin c " +
-           "JOIN FETCH c.user u " +
+           "JOIN JourneyParticipant jp ON c.journey.id = jp.journey.id AND c.user.id = jp.user.id " +
            "WHERE c.journey.id = :journeyId " +
-           "AND c.createdAt <= :cursor " + 
-           "AND u.id NOT IN :excludedUserIds " + 
+           "AND (:isViewerMember = true OR jp.isProfileVisible = true) " +
            "ORDER BY c.createdAt DESC")
-    List<Checkin> findJourneyFeedByCursor(@Param("journeyId") String journeyId, 
-                                          @Param("cursor") LocalDateTime cursor, 
-                                          @Param("excludedUserIds") Collection<String> excludedUserIds, 
-                                          Pageable pageable);
+    List<Checkin> findVisibleCheckinsByJourneyId(@Param("journeyId") String journeyId, @Param("isViewerMember") boolean isViewerMember);
+
+    @Query("SELECT c FROM Checkin c JOIN FETCH c.user u WHERE c.journey.id IN (SELECT p.journey.id FROM JourneyParticipant p WHERE p.user.id = :userId) AND c.createdAt >= :sinceDate AND c.createdAt <= :cursor AND u.id NOT IN :excludedUserIds ORDER BY c.createdAt DESC")
+    List<Checkin> findUnifiedFeedRecent(@Param("userId") String userId, @Param("sinceDate") LocalDateTime sinceDate, @Param("cursor") LocalDateTime cursor, @Param("excludedUserIds") Collection<String> excludedUserIds, Pageable pageable);
+
+    @Query("SELECT c FROM Checkin c JOIN FETCH c.user u WHERE c.journey.id = :journeyId AND c.createdAt <= :cursor AND u.id NOT IN :excludedUserIds ORDER BY c.createdAt DESC")
+    List<Checkin> findJourneyFeedByCursor(@Param("journeyId") String journeyId, @Param("cursor") LocalDateTime cursor, @Param("excludedUserIds") Collection<String> excludedUserIds, Pageable pageable);
     
-    @Query("SELECT c.createdAt FROM Checkin c " +
-            "WHERE c.journey.id = :journeyId " +
-            "AND c.user.id = :userId " +
-            "AND c.status IN ('NORMAL', 'LATE', 'COMEBACK', 'REST') " + 
-            "ORDER BY c.createdAt DESC")
+    @Query("SELECT c.createdAt FROM Checkin c WHERE c.journey.id = :journeyId AND c.user.id = :userId AND c.status IN ('NORMAL', 'LATE', 'COMEBACK', 'REST') ORDER BY c.createdAt DESC")
      List<LocalDateTime> findValidCheckinDates(@Param("journeyId") String journeyId, @Param("userId") String userId);
 
     @Query("SELECT c FROM Checkin c WHERE c.journey.id = :journeyId AND c.user.id = :userId ORDER BY c.createdAt DESC")
@@ -64,29 +50,13 @@ public interface CheckinRepository extends JpaRepository<Checkin, String> {
     @Query("SELECT c FROM Checkin c WHERE c.journey.id = :journeyId AND c.imageUrl IS NOT NULL AND c.status <> 'REJECTED'")
     List<Checkin> findMediaByJourneyId(@Param("journeyId") String journeyId);
 
-    // =========================================================================
-    //  [THÊM MỚI] BẢN ĐỒ KỶ NIỆM (MAP MARKERS)
-    // =========================================================================
-
-    // Lấy các điểm đánh dấu trên bản đồ cho 1 Hành trình cụ thể
-    @Query("SELECT c FROM Checkin c " +
-           "WHERE c.journey.id = :journeyId " +
-           "AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL " +
-           "AND c.status <> 'REST'")
+    @Query("SELECT c FROM Checkin c WHERE c.journey.id = :journeyId AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL AND c.status <> 'REST'")
     List<Checkin> findMapMarkersByJourney(@Param("journeyId") String journeyId);
 
-    // Lấy các điểm đánh dấu trên bản đồ cho TOÀN BỘ Không gian (Box)
-    @Query("SELECT c FROM Checkin c " +
-           "WHERE c.journey.box.id = :boxId " +
-           "AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL " +
-           "AND c.status <> 'REST'")
+    @Query("SELECT c FROM Checkin c WHERE c.journey.box.id = :boxId AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL AND c.status <> 'REST'")
     List<Checkin> findMapMarkersByBox(@Param("boxId") String boxId);
     
- // Lấy tất cả các điểm đánh dấu trên bản đồ của một User
-    @Query("SELECT c FROM Checkin c " +
-           "WHERE c.user.id = :userId " +
-           "AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL " +
-           "AND c.status <> 'REST'")
+    @Query("SELECT c FROM Checkin c WHERE c.user.id = :userId AND c.latitude IS NOT NULL AND c.longitude IS NOT NULL AND c.status <> 'REST'")
     List<Checkin> findMapMarkersByUser(@Param("userId") String userId);
     
     @org.springframework.data.jpa.repository.Query("SELECT c.imageUrl FROM Checkin c WHERE c.journey.id = :journeyId AND c.imageUrl IS NOT NULL AND c.imageUrl != '' ORDER BY c.createdAt DESC")

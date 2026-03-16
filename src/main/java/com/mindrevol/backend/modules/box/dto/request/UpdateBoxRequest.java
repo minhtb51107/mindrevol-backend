@@ -14,4 +14,7 @@ public class UpdateBoxRequest {
     private String avatar;
     private String coverImage;
     private String themeColor;
+    
+    private String textPosition;
+    private String avatarPosition;
 }

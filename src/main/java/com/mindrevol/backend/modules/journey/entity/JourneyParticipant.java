@@ -41,11 +41,15 @@ public class JourneyParticipant extends BaseEntity {
     @Builder.Default
     private int totalCheckins = 0;
 
-    // Vẫn giữ lại cột này vì nó hữu ích để đếm số ngày
     @Column(name = "total_active_days")
     @Builder.Default
     private int totalActiveDays = 0;
 
     @Column(name = "last_checkin_at")
     private LocalDateTime lastCheckinAt;
+
+    // [THÊM MỚI] Cột lưu cài đặt ẩn/hiện trên trang cá nhân
+    @Column(name = "is_profile_visible", nullable = false)
+    @Builder.Default
+    private boolean isProfileVisible = true;
 }

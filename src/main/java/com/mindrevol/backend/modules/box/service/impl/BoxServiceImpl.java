@@ -93,7 +93,22 @@ public class BoxServiceImpl implements BoxService {
     public BoxResponse updateBox(String boxId, UpdateBoxRequest request, String userId) {
         Box box = getBoxById(boxId);
         checkAdminRole(boxId, userId);
+        
+        // Map các trường cũ bình thường
         boxMapper.updateEntityFromRequest(request, box);
+        
+        // [QUAN TRỌNG] Ghi đè thủ công 2 trường vị trí để đảm bảo luôn được lưu
+        if (request.getTextPosition() != null) {
+            box.setTextPosition(request.getTextPosition());
+        }
+        if (request.getAvatarPosition() != null) {
+            box.setAvatarPosition(request.getAvatarPosition());
+        }
+        // Ghi đè coverImage nếu có
+        if (request.getCoverImage() != null) {
+            box.setCoverImage(request.getCoverImage());
+        }
+        
         box = boxRepository.save(box);
         
         chatService.updateBoxConversationInfo(boxId, box.getName());

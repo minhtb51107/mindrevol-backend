@@ -70,58 +70,107 @@ public class JourneyServiceImpl implements JourneyService {
         }
     }
 
+    // --- [THÊM MỚI] Hàm Toggle Ẩn/Hiện Profile ---
+    @Override
+    @Transactional
+    public void toggleProfileVisibility(String journeyId, String userId) {
+        JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journeyId, userId)
+                .orElseThrow(() -> new BadRequestException("Bạn không tham gia hành trình này"));
+        participant.setProfileVisible(!participant.isProfileVisible());
+        participantRepository.save(participant);
+    }
+
     @Override
     @Transactional(readOnly = true)
     public List<UserActiveJourneyResponse> getUserActiveJourneys(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
         LocalDate today = getTodayInUserTimezone(user);
+        
         List<Journey> activeJourneys = journeyRepository.findActiveJourneysByUserIdWithMembers(userId, today);
         return activeJourneys.stream().map(journey -> {
-            JourneyParticipant p = journey.getParticipants().stream()
-                    .filter(part -> part.getUser().getId().equals(userId))
-                    .findFirst()
-                    .orElse(null);
-            if (p == null) {
-                p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
-            }
-            return mapSingleJourneyToResponse(journey, p, userId);
+            JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
+            return mapSingleJourneyToResponse(journey, p, userId); // Viewer là chính userId
         }).collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
-    public List<UserActiveJourneyResponse> getUserFinishedJourneys(String userId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-        LocalDate today = getTodayInUserTimezone(user);
-        List<Journey> completedJourneys = journeyRepository.findCompletedJourneysByUserId(userId, today);
-        return completedJourneys.stream().map(journey -> {
-            JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), userId).orElse(null);
-            return mapSingleJourneyToResponse(journey, p, userId);
+    public List<UserActiveJourneyResponse> getUserPublicJourneys(String targetUserId, String currentUserId) {
+        User targetUser = userRepository.findById(targetUserId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        if (!targetUserId.equals(currentUserId)) {
+            List<Friendship> friends = friendshipRepository.findAllAcceptedFriendsList(currentUserId);
+            boolean isFriend = false;
+            if (friends != null) {
+                isFriend = friends.stream().anyMatch(f -> f.getFriend(currentUserId).getId().equals(targetUserId));
+            }
+            if (!isFriend) {
+                return new ArrayList<>(); 
+            }
+        }
+
+        List<Journey> publicJourneys = journeyRepository.findPublicJourneysByUserId(targetUserId);
+        return publicJourneys.stream().map(journey -> {
+            JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), targetUserId).orElse(null);
+            return mapSingleJourneyToResponse(journey, p, currentUserId); // Truyền currentUserId để Check Tàng hình
         }).collect(Collectors.toList());
     }
 
-    private UserActiveJourneyResponse mapSingleJourneyToResponse(Journey journey, JourneyParticipant participant, String userId) {
-        List<Checkin> myCheckins = checkinRepository.findByJourneyIdAndUserId(journey.getId(), userId);
-        List<CheckinResponse> checkinResponses = myCheckins.stream()
-                .sorted(Comparator.comparing(Checkin::getCreatedAt).reversed())
+    @Override
+    @Transactional(readOnly = true)
+    public List<UserActiveJourneyResponse> getUserPrivateJourneys(String targetUserId, String currentUserId) {
+        if (!targetUserId.equals(currentUserId)) {
+            throw new BadRequestException("Bạn không có quyền xem hành trình riêng tư của người khác.");
+        }
+
+        List<Journey> privateJourneys = journeyRepository.findPrivateJourneysByUserId(targetUserId);
+        return privateJourneys.stream().map(journey -> {
+            JourneyParticipant p = participantRepository.findByJourneyIdAndUserId(journey.getId(), targetUserId).orElse(null);
+            return mapSingleJourneyToResponse(journey, p, currentUserId);
+        }).collect(Collectors.toList());
+    }
+
+    // --- [LOGIC TÀNG HÌNH]: mapSingleJourneyToResponse nhận currentUserId ---
+    private UserActiveJourneyResponse mapSingleJourneyToResponse(Journey journey, JourneyParticipant targetParticipant, String currentUserId) {
+        // 1. Xác định xem người đang nhìn vào màn hình có nằm trong Hành trình này không?
+        boolean isViewerMember = false;
+        if (currentUserId != null) {
+            isViewerMember = participantRepository.existsByJourneyIdAndUserId(journey.getId(), currentUserId);
+        }
+
+        // 2. Tàng hình Checkins: Chỉ lấy ảnh của những người cho phép
+        List<Checkin> journeyCheckins = checkinRepository.findVisibleCheckinsByJourneyId(journey.getId(), isViewerMember);
+        List<CheckinResponse> checkinResponses = journeyCheckins.stream()
                 .map(checkinMapper::toResponse)
+                .collect(Collectors.toList());
+
+        // 3. Tàng hình Members/Avatars
+        List<JourneyParticipant> members = journey.getParticipants();
+        if (members == null) {
+             members = participantRepository.findAllByJourneyId(journey.getId());
+        }
+        if (!isViewerMember) {
+             members = members.stream().filter(JourneyParticipant::isProfileVisible).collect(Collectors.toList());
+        }
+
+        int totalMembers = members.size();
+        List<String> memberAvatars = members.stream()
+                .limit(3)
+                .map(mp -> mp.getUser().getAvatarUrl())
                 .collect(Collectors.toList());
 
         boolean hasNewUpdates = false;
         String latestCheckinImage = null;
-
-        Pageable limitOne = PageRequest.of(0, 1);
-        var latestPage = checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journey.getId(), limitOne);
-        
-        if (latestPage.hasContent()) {
-            Checkin latestCheckin = latestPage.getContent().get(0);
-            if (!latestCheckin.getUser().getId().equals(userId)) {
+        if (!journeyCheckins.isEmpty()) {
+            Checkin latestCheckin = journeyCheckins.get(0); 
+            if (currentUserId != null && !latestCheckin.getUser().getId().equals(currentUserId)) {
                 hasNewUpdates = true;
             }
-            if (latestCheckin.getImageUrl() != null && !latestCheckin.getImageUrl().isEmpty()) {
-                latestCheckinImage = latestCheckin.getImageUrl();
+            for (Checkin c : journeyCheckins) {
+                if (c.getImageUrl() != null && !c.getImageUrl().isEmpty()) {
+                    latestCheckinImage = c.getImageUrl();
+                    break;
+                }
             }
         }
 
@@ -129,17 +178,6 @@ public class JourneyServiceImpl implements JourneyService {
         if ((finalThumbnail == null || finalThumbnail.isEmpty()) && latestCheckinImage != null) {
             finalThumbnail = latestCheckinImage;
         }
-
-        List<JourneyParticipant> members = journey.getParticipants();
-        if (members == null) {
-             members = participantRepository.findAllByJourneyId(journey.getId());
-        }
-        
-        int totalMembers = members.size();
-        List<String> memberAvatars = members.stream()
-                .limit(3)
-                .map(mp -> mp.getUser().getAvatarUrl())
-                .collect(Collectors.toList());
 
         long daysRemaining = 0;
         if (journey.getEndDate() != null) {
@@ -150,7 +188,12 @@ public class JourneyServiceImpl implements JourneyService {
         }
 
         String themeString = (journey.getTheme() != null) ? journey.getTheme().name() : JourneyTheme.OTHER.name();
-        int totalCheckins = participant != null ? participant.getTotalCheckins() : 0;
+        int totalCheckins = targetParticipant != null ? targetParticipant.getTotalCheckins() : 0;
+        
+        boolean isProfileVisible = true;
+        if (targetParticipant != null) {
+            isProfileVisible = targetParticipant.isProfileVisible();
+        }
 
         return UserActiveJourneyResponse.builder()
                 .id(journey.getId())
@@ -162,7 +205,6 @@ public class JourneyServiceImpl implements JourneyService {
                 .endDate(journey.getEndDate())
                 .thumbnailUrl(finalThumbnail)
                 .theme(themeString)
-                // [THÊM MỚI] Gán dữ liệu màu và icon cho Profile Card
                 .themeColor(journey.getThemeColor())
                 .avatar(journey.getAvatar())
                 .memberAvatars(memberAvatars)
@@ -171,9 +213,11 @@ public class JourneyServiceImpl implements JourneyService {
                 .totalCheckins(totalCheckins)
                 .checkins(checkinResponses)
                 .hasNewUpdates(hasNewUpdates)
+                .isProfileVisible(isProfileVisible)
                 .build();
     }
 
+    // Các hàm còn lại giữ nguyên ...
     @Override
     @Transactional(readOnly = true)
     public JourneyAlertResponse getJourneyAlerts(String userId) {
@@ -210,50 +254,25 @@ public class JourneyServiceImpl implements JourneyService {
     @Transactional
     public JourneyResponse createJourney(CreateJourneyRequest request, String userId) {
         User currentUser = getUserEntity(userId);
-        
         LocalDate today = getTodayInUserTimezone(currentUser);
         long activeCount = participantRepository.countActiveByUserId(userId, today); 
-        
         int limit = currentUser.isPremium() ? AppConstants.MAX_ACTIVE_JOURNEYS_GOLD : AppConstants.MAX_ACTIVE_JOURNEYS_FREE;
         
-        if (activeCount >= limit) {
-             throw new BadRequestException("Bạn đã đạt giới hạn " + limit + " hành trình đang hoạt động.");
-        }
-
-        if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) {
-            throw new BadRequestException("Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");
-        }
+        if (activeCount >= limit) throw new BadRequestException("Bạn đã đạt giới hạn " + limit + " hành trình đang hoạt động.");
+        if (request.getEndDate() != null && request.getEndDate().isBefore(request.getStartDate())) throw new BadRequestException("Ngày kết thúc phải sau hoặc bằng ngày bắt đầu");
 
         JourneyTheme theme = (request.getTheme() != null) ? request.getTheme() : JourneyTheme.OTHER;
 
-        Journey journey = Journey.builder()
-                .name(request.getName())
-                .description(request.getDescription())
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
-                .visibility(request.getVisibility())
-                .requireApproval(true) 
-                .status(determineStatus(request.getStartDate()))
-                .inviteCode(RandomStringUtils.randomAlphanumeric(8).toUpperCase())
-                .creator(currentUser)
-                .theme(theme)
-                .thumbnailUrl(request.getThumbnailUrl())
-                // [THÊM MỚI] Map giá trị màu và emoji khi tạo mới
-                .themeColor(request.getThemeColor() != null ? request.getThemeColor() : "#3b82f6")
-                .avatar(request.getAvatar() != null ? request.getAvatar() : "🚀")
-                .build();
-                
+        Journey journey = Journey.builder().name(request.getName()).description(request.getDescription()).startDate(request.getStartDate()).endDate(request.getEndDate()).visibility(request.getVisibility()).requireApproval(true).status(determineStatus(request.getStartDate())).inviteCode(RandomStringUtils.randomAlphanumeric(8).toUpperCase()).creator(currentUser).theme(theme).thumbnailUrl(request.getThumbnailUrl()).themeColor(request.getThemeColor() != null ? request.getThemeColor() : "#3b82f6").avatar(request.getAvatar() != null ? request.getAvatar() : "🚀").build();
         if (request.getBoxId() != null && !request.getBoxId().trim().isEmpty()) {
-            Box box = boxRepository.findById(request.getBoxId())
-                    .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Không gian đã chọn."));
+            Box box = boxRepository.findById(request.getBoxId()).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Không gian đã chọn."));
             journey.setBox(box);
         }
         
         journey = journeyRepository.save(journey);
-        JourneyParticipant owner = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.OWNER).joinedAt(LocalDateTime.now()).build();
+        JourneyParticipant owner = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.OWNER).joinedAt(LocalDateTime.now()).isProfileVisible(true).build();
         participantRepository.save(owner);
         eventPublisher.publishEvent(new JourneyCreatedEvent(journey, currentUser));
-        
         return mapToResponse(journey, owner, null);
     }
 
@@ -261,15 +280,11 @@ public class JourneyServiceImpl implements JourneyService {
     @Transactional 
     public JourneyResponse joinJourney(String inviteCode, String userId) {
         User currentUser = getUserEntity(userId);
-        Journey journeyInfo = journeyRepository.findByInviteCode(inviteCode)
-                .orElseThrow(() -> new ResourceNotFoundException("Mã mời không hợp lệ"));
-        Journey journey = journeyRepository.findByIdWithLock(journeyInfo.getId())
-                .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
+        Journey journeyInfo = journeyRepository.findByInviteCode(inviteCode).orElseThrow(() -> new ResourceNotFoundException("Mã mời không hợp lệ"));
+        Journey journey = journeyRepository.findByIdWithLock(journeyInfo.getId()).orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
 
         LocalDate today = getTodayInUserTimezone(currentUser);
-        if (journey.getEndDate() != null && journey.getEndDate().isBefore(today)) {
-             throw new BadRequestException("Hành trình đã kết thúc.");
-        }
+        if (journey.getEndDate() != null && journey.getEndDate().isBefore(today)) throw new BadRequestException("Hành trình đã kết thúc.");
         
         if (participantRepository.existsByJourneyIdAndUserId(journey.getId(), userId)) return getJourneyDetail(userId, journey.getId());
 
@@ -281,7 +296,7 @@ public class JourneyServiceImpl implements JourneyService {
 
         validateJourneyCapacity(journey);
 
-        JourneyParticipant member = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.MEMBER).joinedAt(LocalDateTime.now()).build();
+        JourneyParticipant member = JourneyParticipant.builder().journey(journey).user(currentUser).role(JourneyRole.MEMBER).joinedAt(LocalDateTime.now()).isProfileVisible(true).build();
         participantRepository.save(member);
         eventPublisher.publishEvent(new JourneyJoinedEvent(journey, currentUser));
         return mapToResponse(journey, member, null);
@@ -302,14 +317,8 @@ public class JourneyServiceImpl implements JourneyService {
     @Override
     @Transactional(readOnly = true)
     public List<JourneyResponse> getMyJourneys(String userId) {
-        List<JourneyResponse> joined = participantRepository.findAllByUserId(userId).stream()
-                .map(p -> mapToResponse(p.getJourney(), p, null))
-                .collect(Collectors.toList());
-        
-        List<JourneyResponse> pending = journeyRequestRepository.findAllByUserIdAndStatus(userId, RequestStatus.PENDING).stream()
-                .map(req -> mapToResponse(req.getJourney(), null, "PENDING"))
-                .collect(Collectors.toList());
-        
+        List<JourneyResponse> joined = participantRepository.findAllByUserId(userId).stream().map(p -> mapToResponse(p.getJourney(), p, null)).collect(Collectors.toList());
+        List<JourneyResponse> pending = journeyRequestRepository.findAllByUserIdAndStatus(userId, RequestStatus.PENDING).stream().map(req -> mapToResponse(req.getJourney(), null, "PENDING")).collect(Collectors.toList());
         List<JourneyResponse> all = new ArrayList<>(joined);
         all.addAll(pending);
         return all;
@@ -333,27 +342,19 @@ public class JourneyServiceImpl implements JourneyService {
         journey.setName(request.getName());
         journey.setDescription(request.getDescription());
         journey.setVisibility(request.getVisibility());
-        
         if (request.getTheme() != null) journey.setTheme(request.getTheme());
         if (request.getThumbnailUrl() != null) journey.setThumbnailUrl(request.getThumbnailUrl());
-
-        // Cập nhật màu và avatar
         if (request.getThemeColor() != null) journey.setThemeColor(request.getThemeColor());
         if (request.getAvatar() != null) journey.setAvatar(request.getAvatar());
 
-        // [THÊM MỚI] Cập nhật Box
         if (request.getBoxId() != null) {
             if (request.getBoxId().trim().isEmpty()) {
-                // Nếu Frontend truyền chuỗi rỗng ("") -> Gỡ Hành trình khỏi Box hiện tại
                 journey.setBox(null); 
             } else {
-                // Nếu có ID -> Cập nhật sang Box mới
-                Box box = boxRepository.findById(request.getBoxId())
-                        .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Không gian đã chọn."));
+                Box box = boxRepository.findById(request.getBoxId()).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy Không gian đã chọn."));
                 journey.setBox(box);
             }
         }
-
         return mapToResponse(journeyRepository.save(journey), p, null);
     }
 
@@ -456,7 +457,6 @@ public class JourneyServiceImpl implements JourneyService {
             userStatus = JourneyResponse.CurrentUserStatus.builder().role(overrideRole).currentStreak(0).totalCheckins(0).hasCheckedInToday(false).build();
         }
         String creatorId = (journey.getCreator() != null) ? String.valueOf(journey.getCreator().getId()) : null;
-        
         String boxId = (journey.getBox() != null) ? journey.getBox().getId() : null;
 
         return JourneyResponse.builder()
@@ -473,7 +473,6 @@ public class JourneyServiceImpl implements JourneyService {
                 .currentUserStatus(userStatus)
                 .requireApproval(journey.isRequireApproval())
                 .boxId(boxId) 
-                // [THÊM MỚI] Gán màu và icon vào Response
                 .themeColor(journey.getThemeColor())
                 .avatar(journey.getAvatar())
                 .build();

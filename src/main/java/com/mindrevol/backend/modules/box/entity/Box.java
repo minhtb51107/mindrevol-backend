@@ -17,7 +17,7 @@ import java.util.List;
 @NoArgsConstructor
 @AllArgsConstructor
 @SuperBuilder
-@SQLRestriction("deleted_at IS NULL") // Tự động filter các record đã xóa mềm
+@SQLRestriction("deleted_at IS NULL")
 public class Box extends BaseEntity {
 
     @Column(nullable = false, length = 100)
@@ -28,13 +28,20 @@ public class Box extends BaseEntity {
 
     // --- TRANG TRÍ ---
     @Column(name = "avatar")
-    private String avatar; // Chứa link ảnh hoặc 1 ký tự Emoji
+    private String avatar; 
 
     @Column(name = "cover_image")
-    private String coverImage; // Ảnh bìa trên cùng
+    private String coverImage; 
 
     @Column(name = "theme_color", length = 20)
-    private String themeColor; // Mã màu HEX (vd: #3B82F6)
+    private String themeColor; 
+
+    // [THÊM MỚI]
+    @Column(name = "text_position", length = 20)
+    private String textPosition; 
+
+    @Column(name = "avatar_position", length = 20)
+    private String avatarPosition; 
     // -----------------
 
     @ManyToOne(fetch = FetchType.LAZY)

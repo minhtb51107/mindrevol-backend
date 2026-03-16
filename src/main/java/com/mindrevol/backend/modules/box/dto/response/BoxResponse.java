@@ -22,4 +22,7 @@ public class BoxResponse {
     private long memberCount; // Số lượng người trong Box
     
     private LocalDateTime createdAt;
+    
+    private String textPosition;
+    private String avatarPosition;
 }
