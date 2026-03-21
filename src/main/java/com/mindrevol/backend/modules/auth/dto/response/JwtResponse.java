@@ -14,4 +14,7 @@ public class JwtResponse {
     private String refreshToken;
     @Builder.Default
     private String tokenType = "Bearer";
+    
+    // Thêm trường này để nhận biết User Social mới tạo
+    private Boolean isNewUser; 
 }

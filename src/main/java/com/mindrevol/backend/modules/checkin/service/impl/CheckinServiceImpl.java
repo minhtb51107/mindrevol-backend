@@ -138,9 +138,9 @@ public class CheckinServiceImpl implements CheckinService {
             }
 
             if (contentType != null && contentType.startsWith("video")) {
-                if (!currentUser.isPremium()) {
-                    throw new BadRequestException("Tính năng Video/Live Photo chỉ dành cho thành viên GOLD.");
-                }
+//                if (!currentUser.isPremium()) {
+//                    throw new BadRequestException("Tính năng Video/Live Photo chỉ dành cho thành viên GOLD.");
+//                }
                 
                 if (file.getSize() > AppConstants.MAX_VIDEO_SIZE_BYTES) {
                     throw new BadRequestException("Video quá lớn. Vui lòng tải video dưới 10MB (Khoảng 3s).");
@@ -152,8 +152,11 @@ public class CheckinServiceImpl implements CheckinService {
                     FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_VIDEOS + journey.getId());
                     imageFileId = uploadResult.getFileId();
                     String rawUrl = uploadResult.getUrl();
-                    videoUrl = rawUrl + "?tr=w-720,q-60,an-true"; 
-                    imageUrl = rawUrl + "/ik-thumbnail.jpg?tr=w-720"; 
+                 // [ĐÃ SỬA] Dùng link video gốc, không gắn param nén ảnh vào video nữa
+                    videoUrl = rawUrl; 
+
+                    // [ĐÃ SỬA] Lấy ảnh bìa mặc định do ImageKit tự trích xuất từ giây đầu tiên
+                    imageUrl = rawUrl + "/ik-thumbnail.jpg";
                 } catch (Exception e) {
                     throw new BadRequestException("Lỗi upload video: " + e.getMessage());
                 }
