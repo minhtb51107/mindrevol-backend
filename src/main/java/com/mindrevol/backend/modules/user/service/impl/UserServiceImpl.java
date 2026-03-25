@@ -5,6 +5,7 @@ import com.mindrevol.backend.common.exception.ResourceNotFoundException;
 import com.mindrevol.backend.common.service.SanitizationService;
 import com.mindrevol.backend.modules.auth.entity.SocialAccount;
 import com.mindrevol.backend.modules.auth.repository.SocialAccountRepository;
+import com.mindrevol.backend.modules.checkin.dto.response.CalendarRecapResponse;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
@@ -145,15 +146,21 @@ public class UserServiceImpl implements UserService {
     @Transactional
     public void deleteMyAccount(String userId) { 
         User user = userRepository.findById(userId).orElseThrow(() -> new ResourceNotFoundException("User not found"));
+        
+        // 1. Đổi email và handle
         long timestamp = System.currentTimeMillis();
         user.setEmail(user.getEmail() + "_deleted_" + timestamp);
         user.setHandle(user.getHandle() + "_deleted_" + timestamp);
-        userRepository.save(user);
         
+        // [QUAN TRỌNG NHẤT]: Ép Hibernate phải cập nhật Email xuống Database ngay lập tức!
+        userRepository.saveAndFlush(user); 
+        
+        // 2. Xóa liên kết mạng xã hội
         List<SocialAccount> socialAccounts = socialAccountRepository.findAllByUserId(userId);
         socialAccountRepository.deleteAll(socialAccounts);
         
-        userRepository.deleteById(user.getId());
+        // 3. Xóa user (Kích hoạt @SQLDelete)
+        userRepository.delete(user);
     }
 
     @Override
@@ -282,12 +289,23 @@ public class UserServiceImpl implements UserService {
     private User getUserByEmail(String email) {
         return userRepository.findByEmail(email).orElseThrow(() -> new ResourceNotFoundException("User not found"));
     }
+    
+    @Override
+    public List<CalendarRecapResponse> getUserCalendarRecap(String userId, int year, int month) {
+        userRepository.findById(userId)
+                .orElseThrow(() -> new ResourceNotFoundException("User không tồn tại"));
+        return checkinRepository.getCalendarRecapInMonth(userId, year, month);
+    }
 
     private UserProfileResponse buildUserProfile(User targetUser, User viewer) {
         UserProfileResponse response = userMapper.toProfileResponse(targetUser);
         
         long friendCount = friendshipRepository.countByUserIdAndStatusAccepted(targetUser.getId());
         response.setFriendCount(friendCount); 
+        
+        long totalCheckins = checkinRepository.countByUserId(targetUser.getId());
+        response.setTotalCheckins(totalCheckins);
+        response.setCurrentStreak(targetUser.getCurrentStreak() != null ? targetUser.getCurrentStreak() : 0);
 
         if (viewer != null && viewer.getId().equals(targetUser.getId())) {
             response.setMe(true);

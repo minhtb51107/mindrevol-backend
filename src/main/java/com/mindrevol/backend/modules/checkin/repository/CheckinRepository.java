@@ -1,5 +1,6 @@
 package com.mindrevol.backend.modules.checkin.repository;
 
+import com.mindrevol.backend.modules.checkin.dto.response.CalendarRecapResponse;
 import com.mindrevol.backend.modules.checkin.entity.Checkin;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -61,4 +62,30 @@ public interface CheckinRepository extends JpaRepository<Checkin, String> {
     
     @org.springframework.data.jpa.repository.Query("SELECT c.imageUrl FROM Checkin c WHERE c.journey.id = :journeyId AND c.imageUrl IS NOT NULL AND c.imageUrl != '' ORDER BY c.createdAt DESC")
     java.util.List<String> findPreviewImagesByJourneyId(@org.springframework.data.repository.query.Param("journeyId") String journeyId, org.springframework.data.domain.Pageable pageable);
+    
+    @Query(value = "SELECT " +
+            "  CAST(EXTRACT(DAY FROM created_at) AS INTEGER) AS day, " +
+            "  image_url AS imageUrl, " +
+            "  id AS checkinId " +
+            "FROM (" +
+            "  SELECT id, created_at, image_url, " +
+            "         ROW_NUMBER() OVER(PARTITION BY EXTRACT(DAY FROM created_at) ORDER BY created_at DESC) as rn " +
+            "  FROM checkins " +
+            "  WHERE user_id = :userId " +
+            "    AND EXTRACT(MONTH FROM created_at) = :month " +
+            "    AND EXTRACT(YEAR FROM created_at) = :year " +
+            "    AND deleted_at IS NULL " +
+            "    AND image_url IS NOT NULL " +
+            ") AS subquery " +
+            "WHERE rn = 1", 
+    nativeQuery = true)
+    List<CalendarRecapResponse> getCalendarRecapInMonth(@Param("userId") String userId, 
+                                                 @Param("year") int year, 
+                                                 @Param("month") int month);
+    
+ // Đếm tổng số bài đăng của một user (bỏ qua các bài đã xóa mềm)
+    long countByUserIdAndDeletedAtIsNull(String userId);
+    
+    // NẾU BẠN KHÔNG DÙNG XÓA MỀM (hoặc đã có @Where(clause="deleted_at is null") ở entity) thì chỉ cần:
+    long countByUserId(String userId);
 }

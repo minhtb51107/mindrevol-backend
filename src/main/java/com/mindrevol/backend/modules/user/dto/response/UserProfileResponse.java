@@ -33,4 +33,6 @@ public class UserProfileResponse {
     private boolean isBlockedByMe;   // Mình có chặn họ không
     private boolean isBlockedByThem; // Họ có chặn mình không (để xử lý UI ẩn nội dung)
     private boolean isMe;            // Đây có phải là mình không
+    private Long totalCheckins;
+    private Integer currentStreak;
 }

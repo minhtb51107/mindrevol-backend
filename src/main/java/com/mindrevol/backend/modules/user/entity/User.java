@@ -28,7 +28,7 @@ import java.util.stream.Collectors;
     @Index(name = "idx_user_email", columnList = "email"),
     @Index(name = "idx_user_handle", columnList = "handle")
 })
-@SQLDelete(sql = "UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ?")
+@SQLDelete(sql = "UPDATE users SET deleted_at = CURRENT_TIMESTAMP WHERE id = ? AND version = ?")
 @Where(clause = "deleted_at IS NULL") 
 public class User extends BaseEntity implements UserDetails {
 
@@ -125,6 +125,13 @@ public class User extends BaseEntity implements UserDetails {
 
     @Version
     private Long version;
+    
+    @Column(name = "current_streak")
+    @Builder.Default
+    private Integer currentStreak = 0;
+
+    @Column(name = "last_checkin_at")
+    private LocalDateTime lastCheckinAt;
 
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {

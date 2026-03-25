@@ -43,4 +43,8 @@ public interface UserRepository extends JpaRepository<User, String> {
     @Modifying
     @Query("UPDATE User u SET u.points = u.points - :amount WHERE u.id = :userId AND u.points >= :amount")
     int decrementPoints(@Param("userId") String userId, @Param("amount") int amount);
+    
+    @Modifying
+    @Query(value = "UPDATE users SET current_streak = 0 WHERE current_streak > 0 AND (last_checkin_at IS NULL OR last_checkin_at < CURRENT_DATE - INTERVAL '1 day')", nativeQuery = true)
+    int resetBrokenStreaks();
 }

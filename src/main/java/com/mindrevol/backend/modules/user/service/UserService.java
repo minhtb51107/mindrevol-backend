@@ -8,6 +8,7 @@ import com.mindrevol.backend.modules.user.dto.response.UserProfileResponse;
 import com.mindrevol.backend.modules.user.dto.response.UserSummaryResponse;
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.entity.UserSettings;
+import com.mindrevol.backend.modules.checkin.dto.response.CalendarRecapResponse;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
 import org.springframework.web.multipart.MultipartFile; // Import này
 
@@ -45,4 +46,6 @@ public interface UserService {
     List<LinkedAccountResponse> getLinkedAccounts(String userId);
 
     void unlinkSocialAccount(String userId, String provider);
+
+	List<CalendarRecapResponse> getUserCalendarRecap(String userId, int year, int month);
 }

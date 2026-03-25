@@ -35,5 +35,6 @@
     <include file="patches/029-fix-mood-audit-columns.xml" relativeToChangelogFile="true"/>
     <include file="patches/030-force-fix.xml" relativeToChangelogFile="true"/>
     <include file="patches/031-add-profile-visibility.xml" relativeToChangelogFile="true"/>
+    <include file="patches/032-add-global-streak.xml" relativeToChangelogFile="true"/>
     
 </databaseChangeLog>

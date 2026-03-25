@@ -2,6 +2,7 @@ package com.mindrevol.backend.modules.user.controller;
 
 import com.mindrevol.backend.common.dto.ApiResponse;
 import com.mindrevol.backend.common.utils.SecurityUtils;
+import com.mindrevol.backend.modules.checkin.dto.response.CalendarRecapResponse;
 import com.mindrevol.backend.modules.journey.dto.response.JourneyResponse;
 import com.mindrevol.backend.modules.user.dto.request.UpdateProfileRequest;
 import com.mindrevol.backend.modules.user.dto.response.LinkedAccountResponse;
@@ -32,6 +33,18 @@ import org.springframework.web.multipart.MultipartFile;
 public class UserController {
 
     private final UserService userService;
+    
+    @GetMapping("/{userId}/calendar")
+    @Operation(summary = "Lấy dữ liệu cuốn lịch Recap tháng")
+    public ResponseEntity<ApiResponse<List<CalendarRecapResponse>>> getActiveCalendar(
+            @PathVariable String userId,
+            @RequestParam int year,
+            @RequestParam int month) {
+        
+        // Gọi qua tầng Service chuẩn kiến trúc
+        List<CalendarRecapResponse> calendar = userService.getUserCalendarRecap(userId, year, month);
+        return ResponseEntity.ok(ApiResponse.success(calendar));
+    }
 
     @GetMapping("/me")
     @PreAuthorize("isAuthenticated()")

@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+        xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+        xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+        xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog
+        http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-4.24.xsd">
+
+    <changeSet id="032-add-global-streak" author="mindrevol">
+        <addColumn tableName="users">
+            <column name="current_streak" type="int" defaultValueNumeric="0"/>
+            <column name="last_checkin_at" type="timestamp"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>
