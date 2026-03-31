@@ -32,8 +32,9 @@ public class Checkin extends BaseEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private User user;
 
+    // [ĐÃ SỬA] Cho phép journey_id được null để lưu trữ cá nhân
     @ManyToOne(fetch = FetchType.LAZY)
-    @JoinColumn(name = "journey_id", nullable = false)
+    @JoinColumn(name = "journey_id", nullable = true)
     private Journey journey;
 
     @Column(columnDefinition = "TEXT")

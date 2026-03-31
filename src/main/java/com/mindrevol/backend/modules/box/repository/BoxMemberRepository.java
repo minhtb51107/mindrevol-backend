@@ -23,8 +23,11 @@ public interface BoxMemberRepository extends JpaRepository<BoxMember, String> {
     // Đếm số lượng thành viên trong Box
     long countByBoxId(String boxId);
     
-    // [ĐÃ THÊM MỚI]: Lấy danh sách thành viên trong Box có phân trang
+    // Lấy danh sách thành viên trong Box có phân trang
     Page<BoxMember> findByBoxId(String boxId, Pageable pageable);
+    
+    // [ĐÃ THÊM MỚI]: Lấy danh sách toàn bộ thành viên trong Box (Không phân trang)
+    List<BoxMember> findByBoxId(String boxId);
     
     // Lấy tất cả user_id trong một box (Phục vụ cho việc cấp quyền xem Journey ở bước sau)
     @Query("SELECT bm.user.id FROM BoxMember bm WHERE bm.box.id = :boxId")

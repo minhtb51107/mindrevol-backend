@@ -50,8 +50,6 @@ public class BoxServiceImpl implements BoxService {
     
     private final ApplicationEventPublisher eventPublisher;
     private final ChatService chatService;
-
-    // [THÊM MỚI] Inject Repository thư mời
     private final BoxInvitationRepository boxInvitationRepository;
 
     @Override
@@ -94,25 +92,13 @@ public class BoxServiceImpl implements BoxService {
         Box box = getBoxById(boxId);
         checkAdminRole(boxId, userId);
         
-        // Map các trường cũ bình thường
         boxMapper.updateEntityFromRequest(request, box);
-        
-        // [QUAN TRỌNG] Ghi đè thủ công 2 trường vị trí để đảm bảo luôn được lưu
-        if (request.getTextPosition() != null) {
-            box.setTextPosition(request.getTextPosition());
-        }
-        if (request.getAvatarPosition() != null) {
-            box.setAvatarPosition(request.getAvatarPosition());
-        }
-        // Ghi đè coverImage nếu có
-        if (request.getCoverImage() != null) {
-            box.setCoverImage(request.getCoverImage());
-        }
+        if (request.getTextPosition() != null) box.setTextPosition(request.getTextPosition());
+        if (request.getAvatarPosition() != null) box.setAvatarPosition(request.getAvatarPosition());
+        if (request.getCoverImage() != null) box.setCoverImage(request.getCoverImage());
         
         box = boxRepository.save(box);
-        
         chatService.updateBoxConversationInfo(boxId, box.getName());
-        
         return boxMapper.toResponse(box, boxMemberRepository.countByBoxId(boxId));
     }
 
@@ -135,47 +121,30 @@ public class BoxServiceImpl implements BoxService {
             throw new BadRequestException("Người dùng đã ở trong không gian này");
         }
 
-        // [SỬA LỖI] Thay vì dùng Redis, ta kiểm tra và lưu vào Database
         if (boxInvitationRepository.existsByBoxIdAndInviteeIdAndStatus(boxId, targetUserId, JourneyInvitationStatus.PENDING)) {
             throw new BadRequestException("Người dùng này đã có lời mời đang chờ xử lý.");
         }
 
-        User targetUser = userRepository.findById(targetUserId)
-                .orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng cần mời"));
-        User requesterUser = userRepository.findById(requesterId)
-                .orElseThrow(() -> new ResourceNotFoundException("Lỗi xác thực người mời"));
+        User targetUser = userRepository.findById(targetUserId).orElseThrow(() -> new ResourceNotFoundException("Không tìm thấy người dùng cần mời"));
+        User requesterUser = userRepository.findById(requesterId).orElseThrow(() -> new ResourceNotFoundException("Lỗi xác thực người mời"));
 
         BoxInvitation invitation = BoxInvitation.builder()
-                .box(box)
-                .inviter(requesterUser)
-                .invitee(targetUser)
-                .status(JourneyInvitationStatus.PENDING)
-                .build();
+                .box(box).inviter(requesterUser).invitee(targetUser).status(JourneyInvitationStatus.PENDING).build();
         boxInvitationRepository.save(invitation);
-
-        // Vẫn bắn Event để Notification Service (WebSocket) gửi thông báo đẩy
         eventPublisher.publishEvent(new BoxMemberInvitedEvent(box, requesterUser, targetUser));
     }
 
     @Override
     @Transactional
     public void acceptInvite(String boxId, String userId) {
-        // [SỬA LỖI] Tìm lời mời trong Database thay vì Redis
         BoxInvitation invitation = boxInvitationRepository.findByBoxIdAndInviteeIdAndStatus(boxId, userId, JourneyInvitationStatus.PENDING)
                 .orElseThrow(() -> new BadRequestException("Lời mời không tồn tại, đã bị từ chối hoặc đã hết hạn."));
 
         if (!boxMemberRepository.existsByBoxIdAndUserId(boxId, userId)) {
-            Box box = invitation.getBox();
-            User user = invitation.getInvitee();
-            
-            BoxMember newMember = BoxMember.builder()
-                    .box(box).user(user).role(BoxRole.MEMBER).build();
+            BoxMember newMember = BoxMember.builder().box(invitation.getBox()).user(invitation.getInvitee()).role(BoxRole.MEMBER).build();
             boxMemberRepository.save(newMember);
-            
             chatService.addUserToBoxConversation(boxId, userId);
         }
-        
-        // Cập nhật trạng thái
         invitation.setStatus(JourneyInvitationStatus.ACCEPTED);
         boxInvitationRepository.save(invitation);
     }
@@ -183,15 +152,12 @@ public class BoxServiceImpl implements BoxService {
     @Override
     @Transactional
     public void rejectInvite(String boxId, String userId) {
-        // [SỬA LỖI] Tìm lời mời trong DB và đổi trạng thái
         BoxInvitation invitation = boxInvitationRepository.findByBoxIdAndInviteeIdAndStatus(boxId, userId, JourneyInvitationStatus.PENDING)
                 .orElseThrow(() -> new BadRequestException("Lời mời không tồn tại hoặc đã xử lý."));
-        
         invitation.setStatus(JourneyInvitationStatus.REJECTED);
         boxInvitationRepository.save(invitation);
     }
 
-    // ... (Các hàm addMember, removeMember, disbandBox, transferOwnership, getBoxMembers, getBoxJourneys giữ nguyên như bản trước) ...
     @Override
     @Transactional
     public void addMember(String boxId, String targetUserId, String requesterId) {
@@ -262,10 +228,7 @@ public class BoxServiceImpl implements BoxService {
         return journeyRepository.findJourneysByBoxId(boxId, pageable)
                 .map(journey -> {
                     JourneyResponse response = journeyMapper.toResponse(journey);
-                    List<String> images = checkinRepository.findPreviewImagesByJourneyId(
-                            journey.getId(), 
-                            PageRequest.of(0, 31)
-                    );
+                    List<String> images = checkinRepository.findPreviewImagesByJourneyId(journey.getId(), PageRequest.of(0, 31));
                     response.setPreviewImages(images);
                     return response;
                 });    

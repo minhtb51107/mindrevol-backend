@@ -12,23 +12,23 @@ import org.springframework.stereotype.Repository;
 import java.util.List;
 import java.util.Optional;
 
-// [SỬA] JpaRepository<Message, String>
 @Repository
 public interface MessageRepository extends JpaRepository<Message, String> {
     
-    // [SỬA] conversationId là String
+    // Lấy danh sách tin nhắn của một cuộc hội thoại, sắp xếp mới nhất lên đầu (hỗ trợ phân trang)
     Page<Message> findByConversationIdOrderByCreatedAtDesc(String conversationId, Pageable pageable);
 
+    // Lấy đúng 1 tin nhắn mới nhất của cuộc hội thoại (Dùng để hiển thị nội dung preview ngoài danh sách Inbox)
     Optional<Message> findTopByConversationIdOrderByCreatedAtDesc(String conversationId);
 
-    // [SỬA] Tham số String
+    // Đếm số lượng tin nhắn "Chưa đọc" (trạng thái khác SEEN) được gửi từ người khác cho user hiện tại
     @Query("SELECT COUNT(m) FROM Message m " +
            "WHERE m.conversation.id = :convId " +
            "AND m.sender.id <> :currentUserId " +
            "AND m.deliveryStatus <> 'SEEN'")
     long countUnreadMessages(@Param("convId") String convId, @Param("currentUserId") String currentUserId);
 
-    // [SỬA] Tham số String
+    // Lấy danh sách các Entity tin nhắn chưa đọc để hệ thống có thể update trạng thái chúng thành "Đã đọc" (SEEN)
     @Query("SELECT m FROM Message m " +
            "WHERE m.conversation.id = :conversationId " +
            "AND m.sender.id <> :userId " +

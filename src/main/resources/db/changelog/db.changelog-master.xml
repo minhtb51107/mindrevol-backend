@@ -37,4 +37,7 @@
     <include file="patches/031-add-profile-visibility.xml" relativeToChangelogFile="true"/>
     <include file="patches/032-add-global-streak.xml" relativeToChangelogFile="true"/>
     
+    <include file="patches/033-make-checkin-journey-id-nullable.xml" relativeToChangelogFile="true"/>
+    <include file="patches/034-update-journey-role-default.xml" relativeToChangelogFile="true"/>
+    
 </databaseChangeLog>

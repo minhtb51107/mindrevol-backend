@@ -8,7 +8,7 @@ import com.mindrevol.backend.modules.checkin.dto.request.UpdateCheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
-import com.mindrevol.backend.modules.checkin.dto.response.MapMarkerResponse; // [THÊM MỚI]
+import com.mindrevol.backend.modules.checkin.dto.response.MapMarkerResponse; 
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
 import com.mindrevol.backend.modules.user.entity.User;
@@ -40,6 +40,14 @@ public class CheckinController {
         User currentUser = userService.getUserById(userId);
         CheckinResponse response = checkinService.createCheckin(request, currentUser);
         return ResponseEntity.ok(ApiResponse.success(response));
+    }
+
+    // [THÊM MỚI] API lấy danh sách bài viết Lưu trữ cá nhân
+    @GetMapping("/me/archived")
+    public ResponseEntity<ApiResponse<Page<CheckinResponse>>> getArchivedCheckins(Pageable pageable) {
+        String userId = SecurityUtils.getCurrentUserId();
+        User currentUser = userService.getUserById(userId);
+        return ResponseEntity.ok(ApiResponse.success(checkinService.getArchivedCheckins(currentUser, pageable)));
     }
 
     @GetMapping("/unified")
@@ -94,17 +102,16 @@ public class CheckinController {
     }
 
     // --- ACTIONS ---
-
     @PutMapping("/{checkinId}")
     public ResponseEntity<ApiResponse<CheckinResponse>> updateCheckin(
             @PathVariable String checkinId,
-            @RequestBody UpdateCheckinRequest request) {
+            @RequestBody UpdateCheckinRequest request) { // [ĐÃ SỬA]
         
         String userId = SecurityUtils.getCurrentUserId();
         User currentUser = userService.getUserById(userId);
         
         return ResponseEntity.ok(ApiResponse.success(
-            checkinService.updateCheckin(checkinId, request.getCaption(), currentUser)
+            checkinService.updateCheckin(checkinId, request, currentUser)
         ));
     }
 

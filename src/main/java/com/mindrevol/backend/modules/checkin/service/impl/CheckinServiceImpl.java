@@ -8,6 +8,7 @@ import com.mindrevol.backend.common.service.ContentModerationService;
 import com.mindrevol.backend.common.service.ImageMetadataService;
 import com.mindrevol.backend.common.utils.SecurityUtils;
 import com.mindrevol.backend.modules.checkin.dto.request.CheckinRequest;
+import com.mindrevol.backend.modules.checkin.dto.request.UpdateCheckinRequest;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinReactionDetailResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CheckinResponse;
 import com.mindrevol.backend.modules.checkin.dto.response.CommentResponse;
@@ -18,13 +19,14 @@ import com.mindrevol.backend.modules.checkin.event.CommentPostedEvent;
 import com.mindrevol.backend.modules.checkin.mapper.CheckinMapper;
 import com.mindrevol.backend.modules.checkin.repository.CheckinCommentRepository;
 import com.mindrevol.backend.modules.checkin.repository.CheckinRepository;
-import com.mindrevol.backend.modules.checkin.repository.SavedCheckinRepository; // [THÊM MỚI]
+import com.mindrevol.backend.modules.checkin.repository.SavedCheckinRepository;
 import com.mindrevol.backend.modules.checkin.service.CheckinService;
 import com.mindrevol.backend.modules.checkin.service.ReactionService;
 import com.mindrevol.backend.modules.journey.entity.Journey;
 import com.mindrevol.backend.modules.journey.entity.JourneyParticipant;
 import com.mindrevol.backend.modules.journey.repository.JourneyParticipantRepository;
 import com.mindrevol.backend.modules.journey.repository.JourneyRepository;
+import com.mindrevol.backend.modules.box.repository.BoxMemberRepository; // [THÊM MỚI]
 import com.mindrevol.backend.modules.storage.service.FileStorageService;
 import com.mindrevol.backend.modules.user.entity.User;
 import com.mindrevol.backend.modules.user.repository.UserBlockRepository;
@@ -57,9 +59,10 @@ import java.util.stream.Collectors;
 public class CheckinServiceImpl implements CheckinService {
 
     private final CheckinRepository checkinRepository;
-    private final SavedCheckinRepository savedCheckinRepository; // [THÊM MỚI]
+    private final SavedCheckinRepository savedCheckinRepository; 
     private final JourneyRepository journeyRepository;
     private final JourneyParticipantRepository participantRepository;
+    private final BoxMemberRepository boxMemberRepository; // [THÊM MỚI]
     private final UserRepository userRepository;
     private final FileStorageService fileStorageService;
     private final CheckinMapper checkinMapper;
@@ -79,12 +82,10 @@ public class CheckinServiceImpl implements CheckinService {
         return blockedIds;
     }
 
-    // [ĐÃ SỬA] Thêm tham số currentUserId
     private CheckinResponse enrichResponse(CheckinResponse response, String currentUserId) {
         List<CheckinReactionDetailResponse> previews = reactionService.getPreviewReactions(response.getId());
         response.setLatestReactions(previews);
         
-        // [THÊM MỚI] Kiểm tra xem bài này đã được lưu hay chưa
         if (currentUserId != null) {
             boolean isSaved = savedCheckinRepository.existsByUserIdAndCheckinId(currentUserId, response.getId());
             response.setSaved(isSaved);
@@ -93,22 +94,50 @@ public class CheckinServiceImpl implements CheckinService {
         return response;
     }
 
+    // [THÊM MỚI] Helper check quyền truy cập (Gộp Box Member + Guest)
+    private boolean hasAccessToJourney(Journey journey, String userId) {
+        if (journey.getBox() != null && boxMemberRepository.existsByBoxIdAndUserId(journey.getBox().getId(), userId)) {
+            return true;
+        }
+        return participantRepository.existsByJourneyIdAndUserId(journey.getId(), userId);
+    }
+
     @Override
-    @CacheEvict(value = "journey_widget", key = "#request.journeyId + '-' + #currentUser.id")
+    @Transactional(readOnly = true)
+    public Page<CheckinResponse> getArchivedCheckins(User currentUser, Pageable pageable) {
+        return checkinRepository.findArchivedCheckinsByUser(currentUser.getId(), pageable)
+                .map(checkinMapper::toResponse)
+                .map(res -> enrichResponse(res, currentUser.getId()));
+    }
+
+    @Override
+    @CacheEvict(value = "journey_widget", key = "#request.journeyId != null ? #request.journeyId + '-' + #currentUser.id : 'archived-' + #currentUser.id")
     @Transactional
     public CheckinResponse createCheckin(CheckinRequest request, User currentUser) {
-        Journey journey = journeyRepository.findById(request.getJourneyId())
-                .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
-
-        JourneyParticipant participant = participantRepository.findByJourneyIdAndUserId(journey.getId(), currentUser.getId())
-                .orElseThrow(() -> new BadRequestException("Bạn không phải thành viên"));
+        Journey journey = null;
+        JourneyParticipant participant = null;
 
         String tz = currentUser.getTimezone() != null ? currentUser.getTimezone() : "UTC";
         ZoneId userZone = ZoneId.of(tz);
         LocalDate todayLocal = LocalDate.now(userZone);
 
-        if (journey.getEndDate() != null && todayLocal.isAfter(journey.getEndDate().plusDays(1))) {
-             throw new BadRequestException("Hành trình này đã kết thúc (Hạn chót: " + journey.getEndDate() + ").");
+        if (request.getJourneyId() != null && !request.getJourneyId().trim().isEmpty()) {
+            journey = journeyRepository.findById(request.getJourneyId())
+                    .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
+
+            // [SỬA LOGIC CHECK QUYỀN Ở ĐÂY]
+            boolean isBoxMember = journey.getBox() != null && boxMemberRepository.existsByBoxIdAndUserId(journey.getBox().getId(), currentUser.getId());
+            
+            // Tìm thử xem có phải là Guest không (nếu là Box Member thì hàm này trả về null là bình thường)
+            participant = participantRepository.findByJourneyIdAndUserId(journey.getId(), currentUser.getId()).orElse(null);
+
+            if (!isBoxMember && participant == null) {
+                throw new BadRequestException("Bạn không phải thành viên (hoặc Khách) của hành trình này.");
+            }
+
+            if (journey.getEndDate() != null && todayLocal.isAfter(journey.getEndDate().plusDays(1))) {
+                 throw new BadRequestException("Hành trình này đã kết thúc (Hạn chót: " + journey.getEndDate() + ").");
+            }
         }
 
         String imageUrl = "";
@@ -130,18 +159,15 @@ public class CheckinServiceImpl implements CheckinService {
                     if (coords != null && coords.length == 2) {
                         exifLat = coords[0];
                         exifLng = coords[1];
-                        log.info("Đã tìm thấy tọa độ EXIF từ ảnh: {}, {}", exifLat, exifLng);
                     }
                 } catch (Exception e) {
                     log.warn("Không thể đọc EXIF Data: {}", e.getMessage());
                 }
             }
 
+            String folderSuffix = journey != null ? journey.getId() : "archived_" + currentUser.getId();
+
             if (contentType != null && contentType.startsWith("video")) {
-//                if (!currentUser.isPremium()) {
-//                    throw new BadRequestException("Tính năng Video/Live Photo chỉ dành cho thành viên GOLD.");
-//                }
-                
                 if (file.getSize() > AppConstants.MAX_VIDEO_SIZE_BYTES) {
                     throw new BadRequestException("Video quá lớn. Vui lòng tải video dưới 10MB (Khoảng 3s).");
                 }
@@ -149,13 +175,10 @@ public class CheckinServiceImpl implements CheckinService {
                 mediaType = MediaType.VIDEO;
                 
                 try {
-                    FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_VIDEOS + journey.getId());
+                    FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_VIDEOS + folderSuffix);
                     imageFileId = uploadResult.getFileId();
                     String rawUrl = uploadResult.getUrl();
-                 // [ĐÃ SỬA] Dùng link video gốc, không gắn param nén ảnh vào video nữa
                     videoUrl = rawUrl; 
-
-                    // [ĐÃ SỬA] Lấy ảnh bìa mặc định do ImageKit tự trích xuất từ giây đầu tiên
                     imageUrl = rawUrl + "/ik-thumbnail.jpg";
                 } catch (Exception e) {
                     throw new BadRequestException("Lỗi upload video: " + e.getMessage());
@@ -164,7 +187,7 @@ public class CheckinServiceImpl implements CheckinService {
             } else {
                 mediaType = MediaType.IMAGE;
                 try {
-                    FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_IMAGES + journey.getId());
+                    FileStorageService.FileUploadResult uploadResult = fileStorageService.uploadFile(file, AppConstants.STORAGE_CHECKIN_IMAGES + folderSuffix);
                     imageUrl = uploadResult.getUrl() + "?tr=w-1080,q-80"; 
                     imageFileId = uploadResult.getFileId();
                     moderationService.validateImage(uploadResult.getUrl()); 
@@ -238,12 +261,17 @@ public class CheckinServiceImpl implements CheckinService {
 
         checkin = checkinRepository.save(checkin);
         
-        updateParticipantStats(participant, finalStatus, todayLocal);
+        // Chỉ cập nhật participant stats (streak) nếu họ là GUEST (có object participant). 
+        // Box Member (participant = null) không cập nhật streak ở bảng này nữa.
+        if (participant != null) {
+            updateParticipantStats(participant, finalStatus, todayLocal);
+        }
 
+        String journeyIdForEvent = journey != null ? journey.getId() : null;
         eventPublisher.publishEvent(new CheckinSuccessEvent(
                 checkin.getId(),
                 currentUser.getId(),
-                journey.getId(),
+                journeyIdForEvent,
                 checkin.getCreatedAt()
         ));
 
@@ -293,12 +321,14 @@ public class CheckinServiceImpl implements CheckinService {
     @Override
     @Transactional(readOnly = true)
     public Page<CheckinResponse> getJourneyFeed(String journeyId, Pageable pageable, User currentUser) {
-        if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
+        Journey journey = journeyRepository.findById(journeyId).orElseThrow(() -> new ResourceNotFoundException("Not found"));
+        // [ĐÃ SỬA] Dùng hàm hasAccessToJourney để check chung cho cả Box Member và Guest
+        if (!hasAccessToJourney(journey, currentUser.getId())) {
             throw new BadRequestException("Không có quyền xem");
         }
         return checkinRepository.findByJourneyIdOrderByCreatedAtDesc(journeyId, pageable)
                 .map(checkinMapper::toResponse)
-                .map(res -> enrichResponse(res, currentUser.getId())); // [ĐÃ SỬA]
+                .map(res -> enrichResponse(res, currentUser.getId())); 
     }
 
     @Override
@@ -319,14 +349,16 @@ public class CheckinServiceImpl implements CheckinService {
                 )
                 .stream()
                 .map(checkinMapper::toResponse)
-                .map(res -> enrichResponse(res, currentUser.getId())) // [ĐÃ SỬA]
+                .map(res -> enrichResponse(res, currentUser.getId())) 
                 .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(readOnly = true)
     public List<CheckinResponse> getJourneyFeedByCursor(String journeyId, User currentUser, LocalDateTime cursor, int limit) {
-        if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
+        Journey journey = journeyRepository.findById(journeyId).orElseThrow(() -> new ResourceNotFoundException("Not found"));
+        // [ĐÃ SỬA]
+        if (!hasAccessToJourney(journey, currentUser.getId())) {
             throw new BadRequestException("Bạn không có quyền xem hành trình này");
         }
         if (cursor == null) cursor = LocalDateTime.now();
@@ -336,7 +368,7 @@ public class CheckinServiceImpl implements CheckinService {
         return checkinRepository.findJourneyFeedByCursor(journeyId, cursor, excludedUserIds, pageable)
                 .stream()
                 .map(checkinMapper::toResponse)
-                .map(res -> enrichResponse(res, currentUser.getId())) // [ĐÃ SỬA]
+                .map(res -> enrichResponse(res, currentUser.getId())) 
                 .collect(Collectors.toList());
     }
     
@@ -373,7 +405,7 @@ public class CheckinServiceImpl implements CheckinService {
 
     @Override
     @Transactional
-    public CheckinResponse updateCheckin(String checkinId, String caption, User currentUser) {
+    public CheckinResponse updateCheckin(String checkinId, UpdateCheckinRequest request, User currentUser) {
         Checkin checkin = checkinRepository.findById(checkinId)
                 .orElseThrow(() -> new ResourceNotFoundException("Checkin not found"));
 
@@ -381,8 +413,39 @@ public class CheckinServiceImpl implements CheckinService {
             throw new BadRequestException("Bạn không có quyền sửa bài viết này");
         }
 
-        checkin.setCaption(caption);
+        if (request.getCaption() != null) {
+            checkin.setCaption(request.getCaption());
+        }
+
+        boolean isMovedToJourney = false;
+        JourneyParticipant participant = null;
+
+        if (request.getJourneyId() != null && !request.getJourneyId().trim().isEmpty()) {
+            if (checkin.getJourney() == null) {
+                Journey journey = journeyRepository.findById(request.getJourneyId())
+                        .orElseThrow(() -> new ResourceNotFoundException("Hành trình không tồn tại"));
+
+                // [SỬA LOGIC CHECK QUYỀN MỚI]
+                boolean isBoxMember = journey.getBox() != null && boxMemberRepository.existsByBoxIdAndUserId(journey.getBox().getId(), currentUser.getId());
+                participant = participantRepository.findByJourneyIdAndUserId(journey.getId(), currentUser.getId()).orElse(null);
+
+                if (!isBoxMember && participant == null) {
+                    throw new BadRequestException("Bạn không phải thành viên của hành trình này");
+                }
+
+                checkin.setJourney(journey);
+                isMovedToJourney = true;
+            }
+        }
+
         checkin = checkinRepository.save(checkin);
+
+        // Chỉ tính toán lại streak nếu họ là GUEST (vì box member không lưu streak ở bảng participant nữa)
+        if (isMovedToJourney && participant != null) {
+            checkinRepository.flush();
+            recalculateParticipantStats(participant, currentUser);
+        }
+
         return checkinMapper.toResponse(checkin);
     }
 
@@ -406,11 +469,11 @@ public class CheckinServiceImpl implements CheckinService {
             eventPublisher.publishEvent(new CheckinDeletedEvent(checkin.getImageFileId()));
         }
 
-        JourneyParticipant participant = participantRepository
-                .findByJourneyIdAndUserId(journey.getId(), checkin.getUser().getId()) 
-                .orElseThrow(() -> new ResourceNotFoundException("Participant not found"));
-
-        recalculateParticipantStats(participant, checkin.getUser());
+        if (journey != null) {
+            // Nếu là GUEST thì sẽ tìm thấy để recalculate, nếu là BOX_MEMBER thì kệ nó (ko báo lỗi)
+            participantRepository.findByJourneyIdAndUserId(journey.getId(), checkin.getUser().getId())
+                    .ifPresent(participant -> recalculateParticipantStats(participant, checkin.getUser()));
+        }
     }
 
     private void recalculateParticipantStats(JourneyParticipant participant, User user) {
@@ -467,7 +530,9 @@ public class CheckinServiceImpl implements CheckinService {
     @Override
     @Transactional(readOnly = true)
     public List<MapMarkerResponse> getMapMarkersForJourney(String journeyId, User currentUser) {
-        if (!participantRepository.existsByJourneyIdAndUserId(journeyId, currentUser.getId())) {
+        Journey journey = journeyRepository.findById(journeyId).orElseThrow(() -> new ResourceNotFoundException("Not found"));
+        // [ĐÃ SỬA]
+        if (!hasAccessToJourney(journey, currentUser.getId())) {
             throw new BadRequestException("Bạn không có quyền xem dữ liệu của hành trình này");
         }
 

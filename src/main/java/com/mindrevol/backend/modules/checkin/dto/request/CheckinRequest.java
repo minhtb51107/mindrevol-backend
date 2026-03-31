@@ -11,7 +11,7 @@ import java.util.List;
 
 @Data
 public class CheckinRequest {
-    @NotNull(message = "Hành trình là bắt buộc")
+    // [ĐÃ SỬA] Bỏ @NotNull để Frontend có thể không gửi journeyId (Lưu trữ cá nhân)
     private String journeyId;
 
     @NotNull(message = "Ảnh check-in là bắt buộc")

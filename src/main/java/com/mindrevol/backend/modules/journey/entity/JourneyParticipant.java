@@ -28,7 +28,7 @@ public class JourneyParticipant extends BaseEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     @Builder.Default
-    private JourneyRole role = JourneyRole.MEMBER;
+    private JourneyRole role = JourneyRole.GUEST; // Default là GUEST cho kiến trúc mới
 
     @Column(name = "joined_at", nullable = false)
     private LocalDateTime joinedAt;
@@ -48,7 +48,6 @@ public class JourneyParticipant extends BaseEntity {
     @Column(name = "last_checkin_at")
     private LocalDateTime lastCheckinAt;
 
-    // [THÊM MỚI] Cột lưu cài đặt ẩn/hiện trên trang cá nhân
     @Column(name = "is_profile_visible", nullable = false)
     @Builder.Default
     private boolean isProfileVisible = true;
